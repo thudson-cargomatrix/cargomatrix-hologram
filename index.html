@@ -246,8 +246,6 @@
       <!-- Voice Controls -->
       <div style="display:flex; flex-direction:column; gap:6px;">
         <span style="color:#666; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Voice Assistant</span>
-        <input id="voice-api-key" type="password" value="AIzaSyDBGlt83fd0DbDLzyWCMEEJcT-7b1ZyZb0"
-          style="width:100%; padding:4px 6px; border:1px solid #333; border-radius:4px; background:#111; color:#aaa; font-size:10px; font-family:monospace;">
         <div style="display:flex; gap:6px;">
           <button id="voice-start" class="voice-btn start">Start</button>
           <button id="voice-stop" class="voice-btn stop" disabled>Stop</button>
@@ -291,9 +289,15 @@
       <div class="ctrl-row"><span class="lbl">Sm Y</span><input id="a2ui-logo-sm-y" type="range" min="-200" max="200" step="1" value="7"><span class="val" id="a2ui-logo-sm-y-val">7</span></div>
       <div class="ctrl-row"><span class="lbl">Lg Scale</span><input id="a2ui-logo-lg-scale" type="range" min="0.2" max="4" step="0.05" value="2.95"><span class="val" id="a2ui-logo-lg-scale-val">2.95</span></div>
       <div class="ctrl-row"><span class="lbl">Lg Y</span><input id="a2ui-logo-lg-y" type="range" min="-200" max="200" step="1" value="130"><span class="val" id="a2ui-logo-lg-y-val">130</span></div>
+      <div style="border-top:1px solid #333; margin:2px 0;"></div>
+      <div class="ctrl-row"><span class="lbl">Speak Anim</span><input id="a2ui-speak-anim-speed" type="range" min="0.5" max="10" step="0.5" value="3"><span class="val" id="a2ui-speak-anim-speed-val">3.0x</span></div>
+      <div class="ctrl-row"><span class="lbl">Speak Rot</span><input id="a2ui-speak-rot-speed" type="range" min="0" max="0.06" step="0.001" value="0.025"><span class="val" id="a2ui-speak-rot-speed-val">0.025</span></div>
+      <div class="ctrl-row"><span class="lbl">Pulse</span><input id="a2ui-speak-pulse" type="checkbox" checked><span class="val" id="a2ui-speak-pulse-val">On</span></div>
+      <div class="ctrl-row"><span class="lbl">Pulse Spd</span><input id="a2ui-speak-pulse-speed" type="range" min="0.2" max="3" step="0.1" value="2"><span class="val" id="a2ui-speak-pulse-speed-val">2.0s</span></div>
     </div>
   </div>
 
+  <script src="config.js"></script>
   <!-- CDN imports -->
   <script type="importmap">
   {
@@ -542,7 +546,7 @@
     const STATES = {
       IDLE:      { label: "Idle",       accent: "#4A9EFF", gold: "#F5A623", rot: 0.004 },
       LISTENING: { label: "Listening",  accent: "#6BC0FF", gold: "#F5A623", rot: 0.003 },
-      SPEAKING:  { label: "Speaking",   accent: "#F5A623", gold: "#FF8C00", rot: 0.005 },
+      SPEAKING:  { label: "Speaking",   accent: "#F5A623", gold: "#FF8C00", rot: 0.025 },
       THINKING:  { label: "Processing", accent: "#8B5CF6", gold: "#B57BFF", rot: 0.006 },
       SLEEP:     { label: "Sleep",      accent: "#4A9EFF", gold: "#F5A623", rot: 0, cubeStyle: 1 },
       ERROR:     { label: "Error",      accent: "#667788", gold: "#556677", rot: 0, cubeStyle: 1 },
@@ -582,6 +586,7 @@
 
     const holoAnim = {
       t: 0, phase: 0, rotAngle: 0, lerpRot: 0.004, sw: 0,
+      jitterPhase: 0, orbitPhase: 0,
       offsets: [],
       curAccent: "#4A9EFF", curGold: "#F5A623",
       speakAmt: 0, thinkAmt: 0, listenAmt: 0, sleepAmt: 0,
@@ -786,8 +791,17 @@
       const a = holoAnim;
       const st = STATES[holoState];
       a.t++; a.phase += 0.02;
-      a.sw += holoState === "SPEAKING" ? 0.15 : 0.03;
-      a.lerpRot = lerp(a.lerpRot, st.rot, 0.05);
+      a.sw += holoState === "SPEAKING" ? 0.15 : holoState === "LISTENING" ? 0.015 : 0.03;
+      if (speakPulseOn) {
+        speakAnimSpeed = 5.5 + 2.5 * Math.sin(performance.now() / 1000 * Math.PI * 2 / speakPulseCycle);
+        const sl = document.getElementById('a2ui-speak-anim-speed');
+        sl.value = speakAnimSpeed;
+        document.getElementById('a2ui-speak-anim-speed-val').textContent = speakAnimSpeed.toFixed(1) + 'x';
+      }
+      const jSpd = 1 + a.speakAmt * (speakAnimSpeed - 1);
+      a.jitterPhase += 0.03 * jSpd;
+      a.orbitPhase += 0.02 * jSpd;
+      a.lerpRot = lerp(a.lerpRot, st.rot, 0.15);
       a.rotAngle += a.lerpRot + updateSpin(holoSpin);
       // In sleep/error, freeze rotation at the nearest equivalent of π/4
       const base = Math.PI / 4;
@@ -818,7 +832,7 @@
       hctx.fillStyle = bGrad; hctx.beginPath(); hctx.arc(hcx, hcy, HR + 5, 0, Math.PI * 2); hctx.fill();
 
       // Particles
-      const pAlpha = lerp(0.2, 0.5, a.speakAmt);
+      const pAlpha = lerp(0.2, 0.3, a.speakAmt);
       particles.forEach(p => {
         p.angle += p.speed * (1 + a.thinkAmt * 3);
         const px = hcx + Math.cos(p.angle) * p.r;
@@ -827,22 +841,10 @@
         if (dx * dx + dy * dy > HR * HR) return;
         const flicker = 0.3 + Math.sin(a.t * 0.05 + p.phase) * 0.3;
         hctx.fillStyle = ac + Math.floor(Math.min(255, pAlpha * flicker * 255)).toString(16).padStart(2, "0");
-        hctx.beginPath(); hctx.arc(px, py, p.size * (1 + a.speakAmt * 0.4), 0, Math.PI * 2); hctx.fill();
+        hctx.beginPath(); hctx.arc(px, py, p.size * (1 + a.speakAmt * 0.15), 0, Math.PI * 2); hctx.fill();
       });
 
-      // Speech wave rings
-      if (a.speakAmt > 0.01) {
-        for (let ring = 0; ring < 3; ring++) {
-          hctx.beginPath(); hctx.strokeStyle = ac + Math.floor(Math.max(0, (25 - ring * 7) * a.speakAmt)).toString(16).padStart(2, "0"); hctx.lineWidth = 1.5;
-          for (let i = 0; i <= 64; i++) {
-            const ang = (i / 64) * Math.PI * 2;
-            const wave = Math.sin(ang * 5 + a.sw - ring * 0.5) * (12 + ring * 6) * a.speakAmt + Math.sin(ang * 3 + a.sw * 1.3) * 8 * a.speakAmt;
-            const r2 = Math.min(HR - 5, 180 + wave + ring * 18);
-            hctx[i === 0 ? "moveTo" : "lineTo"](hcx + Math.cos(ang) * r2, hcy + Math.sin(ang) * r2);
-          }
-          hctx.stroke();
-        }
-      }
+      // Speech wave rings (disabled — speaking now uses thinking orbits)
 
       // Listening pulse
       if (a.listenAmt > 0.01) {
@@ -855,23 +857,24 @@
         hctx.arc(hcx, hcy, pr + 44, 0, Math.PI * 2); hctx.stroke();
       }
 
-      // Thinking orbits
-      if (a.thinkAmt > 0.01) {
+      // Thinking orbits (also used for speaking)
+      const orbitAmt = Math.max(a.thinkAmt, a.speakAmt);
+      if (orbitAmt > 0.01) {
         for (let r = 0; r < 2; r++) {
-          hctx.beginPath(); hctx.strokeStyle = ac + Math.floor(37 * a.thinkAmt).toString(16).padStart(2, "0"); hctx.lineWidth = 1;
+          hctx.beginPath(); hctx.strokeStyle = ac + Math.floor(37 * orbitAmt).toString(16).padStart(2, "0"); hctx.lineWidth = 1;
           for (let i = 0; i <= 48; i++) {
             const ang = (i / 48) * Math.PI * 2;
             const orx = 150 + r * 25, ory = 50 + r * 15;
-            hctx[i === 0 ? "moveTo" : "lineTo"](hcx + Math.cos(ang + a.t * 0.02 + r) * orx, hcy + Math.sin(ang + a.t * 0.02 + r) * ory);
+            hctx[i === 0 ? "moveTo" : "lineTo"](hcx + Math.cos(ang + a.orbitPhase + r) * orx, hcy + Math.sin(ang + a.orbitPhase + r) * ory);
           }
           hctx.stroke();
         }
       }
 
       // Center glow
-      const glowR = 70 + a.speakAmt * 50 + a.listenAmt * 30;
+      const glowR = 70 + a.speakAmt * 20 + a.listenAmt * 30;
       const cg = hctx.createRadialGradient(hcx, hcy, 0, hcx, hcy, glowR);
-      cg.addColorStop(0, ac + Math.floor(24 + a.speakAmt * 29).toString(16).padStart(2, "0"));
+      cg.addColorStop(0, ac + Math.floor(24 + a.speakAmt * 10).toString(16).padStart(2, "0"));
       cg.addColorStop(1, "transparent");
       hctx.fillStyle = cg; hctx.beginPath(); hctx.arc(hcx, hcy, glowR, 0, Math.PI * 2); hctx.fill();
 
@@ -880,8 +883,8 @@
         const off = a.offsets[i] || { phase: 0, speed: 1, amp: 3 };
         // Normal spread positions
         let bx = v[0] * 1.3, by = v[1] * 1.3, bz = v[2] * 1.3;
-        if (a.speakAmt > 0.01) { const d = Math.sqrt(v[0]**2 + v[1]**2 + v[2]**2); const expand = Math.sin(a.sw * 2 + d * 2) * 0.15 * a.speakAmt; bx *= 1 + expand; by *= 1 + expand; bz *= 1 + expand; }
-        if (a.thinkAmt > 0.01) { bx += Math.sin(a.t * 0.03 + off.phase) * 0.2 * a.thinkAmt; by += Math.cos(a.t * 0.025 + off.phase * 1.3) * 0.2 * a.thinkAmt; bz += Math.sin(a.t * 0.035 + off.phase * 0.7) * 0.2 * a.thinkAmt; }
+        const jitter = Math.max(a.thinkAmt, a.speakAmt);
+        if (jitter > 0.01) { bx += Math.sin(a.jitterPhase + off.phase) * 0.2 * jitter; by += Math.cos(a.jitterPhase * 0.83 + off.phase * 1.3) * 0.2 * jitter; bz += Math.sin(a.jitterPhase * 1.17 + off.phase * 0.7) * 0.2 * jitter; }
         by += Math.sin(a.t * 0.015 * off.speed + off.phase) * off.amp * 0.015 * (1 - a.sleepAmt);
         // Sleep/error: lerp toward tight stacked grid, bottom-aligned
         // v[0],v[1],v[2] are -0.5 or 0.5. Tight stack uses small spacing, shifted so bottom row sits at y~+0.8
@@ -908,10 +911,10 @@
         const rawDepth = 0.5 + (p.z + 1.5) * 0.2;
         const depth = lerp(rawDepth, 0.8, a.sleepAmt); // uniform size in sleep
         const sleepScale = lerp(1, 0.55, a.sleepAmt);
-        const sz = 68 * holoCubeScale * depth * sleepScale * (1 + Math.sin(a.sw + p.idx * 0.5) * 0.06 * a.speakAmt);
+        const sz = 68 * holoCubeScale * depth * sleepScale * (1 + Math.sin(a.sw * 0.3 + p.idx * 0.5) * 0.015 * a.speakAmt);
         const alpha = Math.max(0.35, Math.min(1, depth));
-        const glow = lerp(0.1, 0.6, a.speakAmt);
-        const colorBlend = Math.sin(a.sw + p.idx * 0.7) > 0.2 ? a.speakAmt : 0;
+        const glow = lerp(0.1, 0.25, a.speakAmt);
+        const colorBlend = (Math.sin(a.sw * 0.3 + p.idx * 0.7) * 0.5 + 0.5) * 0.2 * a.speakAmt;
         const col = lerpColor(ac, gc, colorBlend);
         drawCube(hctx, p.x, p.y - 20, sz, col, alpha, glow);
       });
@@ -989,6 +992,7 @@
     let a2uiContentAmt = 0;
     const a2uiAnim = {
       t: 0, phase: 0, rotAngle: 0, lerpRot: 0.004, sw: 0,
+      jitterPhase: 0, orbitPhase: 0,
       offsets: [],
       curAccent: "#4A9EFF", curGold: "#F5A623",
       speakAmt: 0, thinkAmt: 0, listenAmt: 0, sleepAmt: 0,
@@ -1841,6 +1845,13 @@
     document.getElementById('a2ui-logo-lg-y').addEventListener('input', (e) => { a2uiLogoLgY = parseInt(e.target.value); document.getElementById('a2ui-logo-lg-y-val').textContent = a2uiLogoLgY; });
     const a2uiLogoTracking = -1.5;
 
+    let speakAnimSpeed = 3, speakRotSpeed = 0.025;
+    let speakPulseOn = true, speakPulseCycle = 2;
+    document.getElementById('a2ui-speak-anim-speed').addEventListener('input', (e) => { speakAnimSpeed = parseFloat(e.target.value); document.getElementById('a2ui-speak-anim-speed-val').textContent = speakAnimSpeed.toFixed(1) + 'x'; });
+    document.getElementById('a2ui-speak-rot-speed').addEventListener('input', (e) => { speakRotSpeed = parseFloat(e.target.value); STATES.SPEAKING.rot = speakRotSpeed; document.getElementById('a2ui-speak-rot-speed-val').textContent = speakRotSpeed.toFixed(3); });
+    document.getElementById('a2ui-speak-pulse').addEventListener('change', (e) => { speakPulseOn = e.target.checked; document.getElementById('a2ui-speak-pulse-val').textContent = speakPulseOn ? 'On' : 'Off'; });
+    document.getElementById('a2ui-speak-pulse-speed').addEventListener('input', (e) => { speakPulseCycle = parseFloat(e.target.value); document.getElementById('a2ui-speak-pulse-speed-val').textContent = speakPulseCycle.toFixed(1) + 's'; });
+
     // Default class for sliders
     document.querySelectorAll('#a2ui-sidebar input[type="range"]').forEach(el => {
       updateDefaultClass(el);
@@ -1872,8 +1883,17 @@
       const a = a2uiAnim;
       const st = STATES[a2uiState];
       a.t++; a.phase += 0.02;
-      a.sw += a2uiState === "SPEAKING" ? 0.15 : 0.03;
-      a.lerpRot = lerp(a.lerpRot, st.rot, 0.05);
+      a.sw += a2uiState === "SPEAKING" ? 0.15 : a2uiState === "LISTENING" ? 0.015 : 0.03;
+      if (speakPulseOn) {
+        speakAnimSpeed = 5.5 + 2.5 * Math.sin(performance.now() / 1000 * Math.PI * 2 / speakPulseCycle);
+        const sl = document.getElementById('a2ui-speak-anim-speed');
+        sl.value = speakAnimSpeed;
+        document.getElementById('a2ui-speak-anim-speed-val').textContent = speakAnimSpeed.toFixed(1) + 'x';
+      }
+      const jSpd = 1 + a.speakAmt * (speakAnimSpeed - 1);
+      a.jitterPhase += 0.03 * jSpd;
+      a.orbitPhase += 0.02 * jSpd;
+      a.lerpRot = lerp(a.lerpRot, st.rot, 0.15);
       a.rotAngle += a.lerpRot + updateSpin(a2uiSpin);
       const base = Math.PI / 4;
       const nearestSleepAngle = Math.round((a.rotAngle - base) / (Math.PI * 2)) * (Math.PI * 2) + base;
@@ -1917,7 +1937,7 @@
 
       // Particles
       if (contentFade > 0.01) {
-      const pAlpha = lerp(0.2, 0.5, a.speakAmt) * contentFade;
+      const pAlpha = lerp(0.2, 0.3, a.speakAmt) * contentFade;
       a2uiParticles.forEach(p => {
         p.angle += p.speed * (1 + a.thinkAmt * 3);
         const px = hcx + Math.cos(p.angle) * p.r;
@@ -1926,23 +1946,11 @@
         if (dx * dx + dy * dy > HR * HR) return;
         const flicker = 0.3 + Math.sin(a.t * 0.05 + p.phase) * 0.3;
         a2ctx.fillStyle = ac + Math.floor(Math.min(255, pAlpha * flicker * 255)).toString(16).padStart(2, "0");
-        a2ctx.beginPath(); a2ctx.arc(px, py, p.size * (1 + a.speakAmt * 0.4), 0, Math.PI * 2); a2ctx.fill();
+        a2ctx.beginPath(); a2ctx.arc(px, py, p.size * (1 + a.speakAmt * 0.15), 0, Math.PI * 2); a2ctx.fill();
       });
       }
 
-      // Speech wave rings
-      if (a.speakAmt > 0.01 && contentFade > 0.01) {
-        for (let ring = 0; ring < 3; ring++) {
-          a2ctx.beginPath(); a2ctx.strokeStyle = ac + Math.floor(Math.max(0, (25 - ring * 7) * a.speakAmt * contentFade)).toString(16).padStart(2, "0"); a2ctx.lineWidth = 1.5;
-          for (let i = 0; i <= 64; i++) {
-            const ang = (i / 64) * Math.PI * 2;
-            const wave = Math.sin(ang * 5 + a.sw - ring * 0.5) * (12 + ring * 6) * a.speakAmt + Math.sin(ang * 3 + a.sw * 1.3) * 8 * a.speakAmt;
-            const r2 = Math.min(HR - 5, 180 + wave + ring * 18);
-            a2ctx[i === 0 ? "moveTo" : "lineTo"](hcx + Math.cos(ang) * r2, hcy + Math.sin(ang) * r2);
-          }
-          a2ctx.stroke();
-        }
-      }
+      // Speech wave rings (disabled — speaking now uses thinking orbits)
 
       // Listening pulse
       if (a.listenAmt > 0.01 && contentFade > 0.01) {
@@ -1955,14 +1963,15 @@
         a2ctx.arc(hcx, hcy, pr + 44, 0, Math.PI * 2); a2ctx.stroke();
       }
 
-      // Thinking orbits
-      if (a.thinkAmt > 0.01 && contentFade > 0.01) {
+      // Thinking orbits (also used for speaking)
+      const orbitAmt = Math.max(a.thinkAmt, a.speakAmt);
+      if (orbitAmt > 0.01 && contentFade > 0.01) {
         for (let r = 0; r < 2; r++) {
-          a2ctx.beginPath(); a2ctx.strokeStyle = ac + Math.floor(37 * a.thinkAmt * contentFade).toString(16).padStart(2, "0"); a2ctx.lineWidth = 1;
+          a2ctx.beginPath(); a2ctx.strokeStyle = ac + Math.floor(37 * orbitAmt * contentFade).toString(16).padStart(2, "0"); a2ctx.lineWidth = 1;
           for (let i = 0; i <= 48; i++) {
             const ang = (i / 48) * Math.PI * 2;
             const orx = 150 + r * 25, ory = 50 + r * 15;
-            a2ctx[i === 0 ? "moveTo" : "lineTo"](hcx + Math.cos(ang + a.t * 0.02 + r) * orx, hcy + Math.sin(ang + a.t * 0.02 + r) * ory);
+            a2ctx[i === 0 ? "moveTo" : "lineTo"](hcx + Math.cos(ang + a.orbitPhase + r) * orx, hcy + Math.sin(ang + a.orbitPhase + r) * ory);
           }
           a2ctx.stroke();
         }
@@ -1970,9 +1979,9 @@
 
       // Center glow
       if (contentFade > 0.01) {
-      const glowR = 70 + a.speakAmt * 50 + a.listenAmt * 30;
+      const glowR = 70 + a.speakAmt * 20 + a.listenAmt * 30;
       const cg = a2ctx.createRadialGradient(hcx, hcy, 0, hcx, hcy, glowR);
-      cg.addColorStop(0, ac + Math.floor((24 + a.speakAmt * 29) * contentFade).toString(16).padStart(2, "0"));
+      cg.addColorStop(0, ac + Math.floor((24 + a.speakAmt * 10) * contentFade).toString(16).padStart(2, "0"));
       cg.addColorStop(1, "transparent");
       a2ctx.fillStyle = cg; a2ctx.beginPath(); a2ctx.arc(hcx, hcy, glowR, 0, Math.PI * 2); a2ctx.fill();
       }
@@ -1982,8 +1991,8 @@
       const projected = grid.map((v, i) => {
         const off = a.offsets[i] || { phase: 0, speed: 1, amp: 3 };
         let bx = v[0] * 1.3, by = v[1] * 1.3, bz = v[2] * 1.3;
-        if (a.speakAmt > 0.01) { const d = Math.sqrt(v[0]**2 + v[1]**2 + v[2]**2); const expand = Math.sin(a.sw * 2 + d * 2) * 0.15 * a.speakAmt; bx *= 1 + expand; by *= 1 + expand; bz *= 1 + expand; }
-        if (a.thinkAmt > 0.01) { bx += Math.sin(a.t * 0.03 + off.phase) * 0.2 * a.thinkAmt; by += Math.cos(a.t * 0.025 + off.phase * 1.3) * 0.2 * a.thinkAmt; bz += Math.sin(a.t * 0.035 + off.phase * 0.7) * 0.2 * a.thinkAmt; }
+        const jitter = Math.max(a.thinkAmt, a.speakAmt);
+        if (jitter > 0.01) { bx += Math.sin(a.jitterPhase + off.phase) * 0.2 * jitter; by += Math.cos(a.jitterPhase * 0.83 + off.phase * 1.3) * 0.2 * jitter; bz += Math.sin(a.jitterPhase * 1.17 + off.phase * 0.7) * 0.2 * jitter; }
         by += Math.sin(a.t * 0.015 * off.speed + off.phase) * off.amp * 0.015 * (1 - a.sleepAmt);
         const stackX = v[0] * 0.52;
         const stackY = (v[1] + 0.5) * 0.52 + 1.1;
@@ -2006,10 +2015,10 @@
         const rawDepth = 0.5 + (p.z + 1.5) * 0.2;
         const depth = lerp(rawDepth, 0.8, a.sleepAmt);
         const sleepScale = lerp(1, 0.55, a.sleepAmt);
-        const sz = 68 * a2uiCubeScale * depth * sleepScale * contentFade * (1 + Math.sin(a.sw + p.idx * 0.5) * 0.06 * a.speakAmt);
+        const sz = 68 * a2uiCubeScale * depth * sleepScale * contentFade * (1 + Math.sin(a.sw * 0.3 + p.idx * 0.5) * 0.015 * a.speakAmt);
         const alpha = Math.max(0.35, Math.min(1, depth)) * contentFade;
-        const glow = lerp(0.1, 0.6, a.speakAmt) * contentFade;
-        const colorBlend = Math.sin(a.sw + p.idx * 0.7) > 0.2 ? a.speakAmt : 0;
+        const glow = lerp(0.1, 0.25, a.speakAmt) * contentFade;
+        const colorBlend = (Math.sin(a.sw * 0.3 + p.idx * 0.7) * 0.5 + 0.5) * 0.2 * a.speakAmt;
         const col = lerpColor(ac, gc, colorBlend);
         drawCube(a2ctx, p.x, p.y - 20, sz, col, alpha, glow);
       });
@@ -2549,8 +2558,8 @@ VOICE STYLE:
     }
 
     function connectGemini() {
-      const apiKey = document.getElementById('voice-api-key').value.trim();
-      if (!apiKey) { setVoiceStatus('No API key', '#f88'); return; }
+      const apiKey = (window.GEMINI_API_KEY || '').trim();
+      if (!apiKey) { setVoiceStatus('No API key — set it in config.js', '#f88'); return; }
 
       setVoiceStatus('Connecting...', '#ff0');
       const url = `${GEMINI_WS_URL}?key=${apiKey}`;
@@ -2597,7 +2606,8 @@ VOICE STYLE:
       };
 
       geminiWs.onclose = (e) => {
-        setVoiceStatus(`Disconnected (${e.code})`, '#888');
+        console.error('Gemini WS closed:', e.code, e.reason);
+        setVoiceStatus(`Disconnected (${e.code}${e.reason ? ': ' + e.reason : ''})`, '#888');
         // Normal close (1000) or user-initiated = SLEEP, otherwise ERROR
         if (e.code === 1000 || e.code === 1005) {
           cleanupVoice('SLEEP');
