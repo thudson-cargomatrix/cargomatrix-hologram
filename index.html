@@ -1,0 +1,3023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CargoMatrix Avatar</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #000; font-family: system-ui, sans-serif; }
+
+    /* ── Mode Toggle ─────────────────────────────── */
+    #mode-toggle {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 30;
+      display: flex; gap: 4px; background: rgba(0,0,0,0.8); border: 1px solid #333;
+      border-radius: 8px; padding: 4px;
+    }
+    #mode-toggle button {
+      padding: 8px 20px; border: none; border-radius: 6px; cursor: pointer;
+      font-size: 13px; font-weight: 500; transition: all 0.3s;
+      background: transparent; color: #666;
+    }
+    #mode-toggle button.active { background: #4A9EFF22; color: #4A9EFF; border: 1px solid #4A9EFF44; }
+
+    /* ── View: 3D Avatar ─────────────────────────── */
+    #view-3d { width: 100vw; height: 100vh; }
+    #view-3d canvas { display: block; }
+    #loading {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      background: #1a1a2e; color: #e0e0e0;
+      font-family: system-ui, sans-serif; font-size: 1.2rem;
+      z-index: 10; transition: opacity 0.5s;
+    }
+    #loading.hidden { opacity: 0; pointer-events: none; }
+
+    #webcam-widget {
+      position: fixed; bottom: 16px; right: 16px; z-index: 20;
+      background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px; overflow: hidden;
+    }
+    #webcam-container { position: relative; width: 260px; height: 195px; }
+    #webcam-video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+    #face-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    #webcam-status {
+      color: #aaa; font-size: 0.7rem; text-align: center; padding: 2px 0;
+      position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.6);
+    }
+
+    #debug-panel {
+      position: fixed; bottom: 16px; left: 16px; z-index: 20;
+      background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px; padding: 12px 16px;
+      font-family: 'Consolas','Monaco',monospace; font-size: 0.75rem;
+      color: #8f8; min-width: 220px;
+    }
+    #debug-panel .label { color: #888; }
+    #debug-panel .row { margin-bottom: 4px; }
+
+    /* ── View: Hologram ──────────────────────────── */
+    #view-hologram {
+      display: none; width: 100vw; height: 100vh;
+      align-items: center; justify-content: center;
+      background: #000; color: #ccc;
+    }
+    #holo-center {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    #holo-canvas {
+      width: min(90vh, 90vw); height: min(90vh, 90vw);
+    }
+    #holo-state-buttons {
+      margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+    }
+    #holo-state-buttons button {
+      padding: 10px 20px; border-radius: 8px; cursor: pointer;
+      font-size: 13px; transition: all 0.3s;
+    }
+
+    #holo-sidebar {
+      position: fixed; right: 16px; top: 50%; transform: translateY(-50%); z-index: 20;
+      background: rgba(0,0,0,0.8); border: 1px solid #333; border-radius: 10px;
+      padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+      font-size: 11px; color: #888; min-width: 200px;
+    }
+    #holo-sidebar .ctrl-row {
+      display: flex; align-items: center; gap: 6px;
+    }
+    #holo-sidebar .ctrl-row span.lbl { min-width: 60px; color: #666; }
+    #holo-sidebar .ctrl-row input[type="range"] { width: 90px; accent-color: #4A9EFF; }
+    #holo-sidebar .ctrl-row input[type="range"].at-default { accent-color: #222; }
+    #holo-sidebar .ctrl-row span.val { min-width: 32px; text-align: right; color: #aaa; }
+
+    /* ── View: Working Hologram ─────────────────────── */
+    #view-a2ui {
+      display: none; width: 100vw; height: 100vh;
+      align-items: center; justify-content: center;
+      background: #000; color: #ccc;
+    }
+    #a2ui-center {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    #a2ui-canvas {
+      width: min(90vh, 90vw); height: min(90vh, 90vw);
+    }
+    #a2ui-left-panel {
+      position: fixed; left: 16px; top: 50%; transform: translateY(-50%); z-index: 20;
+      display: none; flex-direction: column; align-items: center; gap: 6px;
+    }
+    #a2ui-left-panel .flow-btn {
+      padding: 8px 16px; border-radius: 8px; cursor: pointer;
+      font-size: 12px; font-weight: 500; transition: all 0.3s;
+      border: 1px solid #222; background: #111; color: #555;
+      position: relative; z-index: 2; min-width: 90px; text-align: center;
+    }
+    #a2ui-left-panel .flow-btn.active {
+      font-weight: 600;
+    }
+    #a2ui-flow-svg {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; z-index: 1;
+    }
+    #a2ui-sidebar {
+      position: fixed; right: 16px; top: 50%; transform: translateY(-50%); z-index: 20;
+      background: rgba(0,0,0,0.8); border: 1px solid #333; border-radius: 10px;
+      padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+      font-size: 11px; color: #888; min-width: 200px;
+    }
+    #a2ui-sidebar .ctrl-row {
+      display: flex; align-items: center; gap: 6px;
+    }
+    #a2ui-sidebar .ctrl-row span.lbl { min-width: 60px; color: #666; }
+    #a2ui-sidebar .ctrl-row input[type="range"] { width: 90px; accent-color: #4A9EFF; }
+    #a2ui-sidebar .ctrl-row input[type="range"].at-default { accent-color: #222; }
+    #a2ui-sidebar .ctrl-row span.val { min-width: 32px; text-align: right; color: #aaa; }
+
+    .hidden-view { display: none !important; }
+
+    /* ── Voice Controls ────────────────────────────── */
+    .voice-btn {
+      padding: 6px 16px; border: none; border-radius: 6px; cursor: pointer;
+      font-size: 12px; font-weight: 600; transition: all 0.3s;
+    }
+    .voice-btn.start { background: #2a7a2a; color: #8f8; }
+    .voice-btn.start:hover { background: #3a9a3a; }
+    .voice-btn.start:disabled { background: #1a3a1a; color: #555; cursor: default; }
+    .voice-btn.stop { background: #7a2a2a; color: #f88; }
+    .voice-btn.stop:hover { background: #9a3a3a; }
+    .voice-btn.stop:disabled { background: #3a1a1a; color: #555; cursor: default; }
+    #voice-status { font-size: 10px; color: #666; margin-top: 2px; }
+
+    /* ── Tool Log ──────────────────────────────────── */
+    #a2ui-tool-log {
+      position: fixed; bottom: 16px; left: 16px; z-index: 20;
+      background: rgba(0,0,0,0.85); border: 1px solid #333; border-radius: 10px;
+      padding: 10px 12px; width: 320px; max-height: 250px; overflow-y: auto;
+      font-family: 'Consolas','Monaco',monospace; font-size: 11px;
+      display: none;
+    }
+    #a2ui-tool-log .log-entry { margin-bottom: 6px; line-height: 1.4; }
+    #a2ui-tool-log .log-ts { color: #555; font-size: 9px; }
+    #a2ui-tool-log .log-tool { color: #5b9aff; }
+    #a2ui-tool-log .log-result { color: #5bcc5b; }
+    #a2ui-tool-log .log-args { color: #888; }
+  </style>
+</head>
+<body>
+
+  <!-- ── Mode Toggle ──────────────────────────────── -->
+  <div id="mode-toggle">
+    <button id="btn-3d" class="active">3D Avatar</button>
+    <button id="btn-holo">Hologram</button>
+    <button id="btn-a2ui">Working Hologram</button>
+  </div>
+
+  <!-- ── View: 3D Avatar ──────────────────────────── -->
+  <div id="view-3d">
+    <div id="loading">Loading model...</div>
+    <div id="canvas-container"></div>
+
+    <div id="debug-panel">
+      <div class="row"><span class="label">Face detected:</span> <span id="dbg-face-detected">--</span></div>
+      <div class="row"><span class="label">Face size:</span> <span id="dbg-face-size">--</span></div>
+      <div class="row"><span class="label">Offset X:</span> <span id="dbg-offset-x">--</span></div>
+      <div class="row"><span class="label">Offset Y:</span> <span id="dbg-offset-y">--</span></div>
+      <div class="row"><span class="label">FPS:</span> <span id="dbg-fps">--</span></div>
+      <div class="row" style="margin-top:6px;">
+        <span class="label">Sens X:</span>
+        <input id="sensitivity-x" type="range" min="-2" max="2" step="0.05" value="0.5"
+          style="width:80px; vertical-align:middle; margin:0 4px; accent-color:#00ff88;">
+        <span id="sensitivity-x-val" style="min-width:28px; display:inline-block;">0.50</span>
+      </div>
+      <div class="row">
+        <span class="label">Sens Y:</span>
+        <input id="sensitivity-y" type="range" min="-2" max="2" step="0.05" value="-0.5"
+          style="width:80px; vertical-align:middle; margin:0 4px; accent-color:#00ff88;">
+        <span id="sensitivity-y-val" style="min-width:28px; display:inline-block;">-0.50</span>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:center; margin-top:10px;">
+        <canvas id="arrow-3d" width="120" height="120" style="width:120px; height:120px; border-radius:6px;"></canvas>
+      </div>
+    </div>
+
+    <div id="webcam-widget">
+      <div id="webcam-container">
+        <video id="webcam-video" autoplay playsinline muted></video>
+        <canvas id="face-overlay"></canvas>
+        <div id="webcam-status">Starting camera...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── View: Hologram ───────────────────────────── -->
+  <div id="view-hologram">
+    <div id="holo-center">
+      <canvas id="holo-canvas" width="600" height="600"></canvas>
+      <div id="holo-state-buttons"></div>
+    </div>
+
+    <div id="holo-sidebar">
+      <div id="holo-cube-mode" style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
+        <span class="lbl" style="min-width:auto;">Cubes:</span>
+        <button data-mode="solid" style="padding:3px 10px; border:1px solid #222; border-radius:5px; background:#111; color:#555; cursor:pointer; font-size:11px;">Solid</button>
+        <button data-mode="glass" style="padding:3px 10px; border:1px solid #4A9EFF44; border-radius:5px; background:#4A9EFF20; color:#4A9EFF; cursor:pointer; font-size:11px; font-weight:600;">Glass</button>
+        <button data-mode="wire" style="padding:3px 10px; border:1px solid #222; border-radius:5px; background:#111; color:#555; cursor:pointer; font-size:11px;">Wire</button>
+      </div>
+      <div class="ctrl-row"><span class="lbl">Cube Size</span><input id="holo-cube-scale" type="range" min="0.2" max="3" step="0.05" value="1.2"><span class="val" id="holo-cube-scale-val">1.20</span></div>
+      <div class="ctrl-row"><span class="lbl">All Scale</span><input id="holo-all-scale" type="range" min="0.2" max="3" step="0.05" value="1.2"><span class="val" id="holo-all-scale-val">1.20</span></div>
+      <div class="ctrl-row"><span class="lbl">Offset Y</span><input id="holo-offset-y" type="range" min="-200" max="200" step="1" value="-60"><span class="val" id="holo-offset-y-val">-60</span></div>
+      <div style="border-top:1px solid #333; margin:2px 0;"></div>
+      <div class="ctrl-row"><span class="lbl">Chars</span><input id="holo-char-count" type="range" min="0" max="200" step="1" value="55"><span class="val" id="holo-char-count-val">55</span></div>
+      <div class="ctrl-row"><span class="lbl">Font Size</span><input id="holo-font-size" type="range" min="10" max="40" step="1" value="25"><span class="val" id="holo-font-size-val">25px</span></div>
+      <div class="ctrl-row"><span class="lbl">Text Pad</span><input id="holo-text-pad" type="range" min="-20" max="40" step="1" value="25"><span class="val" id="holo-text-pad-val">25</span></div>
+      <div class="ctrl-row"><span class="lbl">Text Top</span><input id="holo-text-top" type="range" min="0" max="90" step="1" value="70"><span class="val" id="holo-text-top-val">70%</span></div>
+    </div>
+  </div>
+
+  <!-- ── View: Working Hologram ──────────────────── -->
+  <div id="view-a2ui">
+    <div id="a2ui-left-panel"></div>
+    <div id="a2ui-tool-log"></div>
+    <div id="a2ui-center">
+      <canvas id="a2ui-canvas" width="600" height="600"></canvas>
+    </div>
+
+    <div id="a2ui-sidebar">
+      <!-- Voice Controls -->
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <span style="color:#666; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Voice Assistant</span>
+        <input id="voice-api-key" type="password" value="AIzaSyDBGlt83fd0DbDLzyWCMEEJcT-7b1ZyZb0"
+          style="width:100%; padding:4px 6px; border:1px solid #333; border-radius:4px; background:#111; color:#aaa; font-size:10px; font-family:monospace;">
+        <div style="display:flex; gap:6px;">
+          <button id="voice-start" class="voice-btn start">Start</button>
+          <button id="voice-stop" class="voice-btn stop" disabled>Stop</button>
+        </div>
+        <label style="display:flex; align-items:center; gap:4px; color:#666; font-size:10px; cursor:pointer;">
+          <input id="voice-greet" type="checkbox" checked style="accent-color:#4A9EFF;"> Greet on start
+        </label>
+        <div id="voice-status">Disconnected</div>
+        <details style="margin-top:2px;">
+          <summary style="color:#555; font-size:10px; cursor:pointer;">System Prompt</summary>
+          <textarea id="voice-sys-prompt" readonly rows="6"
+            style="width:100%; margin-top:4px; padding:4px; border:1px solid #222; border-radius:4px; background:#0a0a0a; color:#777; font-size:9px; resize:vertical; font-family:monospace;"></textarea>
+        </details>
+        <details style="margin-top:2px;">
+          <summary style="color:#555; font-size:10px; cursor:pointer;">Tools JSON</summary>
+          <textarea id="voice-tools-json" readonly rows="6"
+            style="width:100%; margin-top:4px; padding:4px; border:1px solid #222; border-radius:4px; background:#0a0a0a; color:#777; font-size:9px; resize:vertical; font-family:monospace;"></textarea>
+        </details>
+      </div>
+      <div style="border-top:1px solid #333; margin:2px 0;"></div>
+      <div id="a2ui-cube-mode" style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">
+        <span class="lbl" style="min-width:auto;">Cubes:</span>
+        <button data-mode="solid" style="padding:3px 10px; border:1px solid #222; border-radius:5px; background:#111; color:#555; cursor:pointer; font-size:11px;">Solid</button>
+        <button data-mode="glass" style="padding:3px 10px; border:1px solid #4A9EFF44; border-radius:5px; background:#4A9EFF20; color:#4A9EFF; cursor:pointer; font-size:11px; font-weight:600;">Glass</button>
+        <button data-mode="wire" style="padding:3px 10px; border:1px solid #222; border-radius:5px; background:#111; color:#555; cursor:pointer; font-size:11px;">Wire</button>
+      </div>
+      <div class="ctrl-row"><span class="lbl">Cube Size</span><input id="a2ui-cube-scale" type="range" min="0.2" max="3" step="0.05" value="0.9"><span class="val" id="a2ui-cube-scale-val">0.90</span></div>
+      <div class="ctrl-row"><span class="lbl">All Scale</span><input id="a2ui-all-scale" type="range" min="0.2" max="3" step="0.05" value="0.9"><span class="val" id="a2ui-all-scale-val">0.90</span></div>
+      <div class="ctrl-row"><span class="lbl">Offset Y</span><input id="a2ui-offset-y" type="range" min="-200" max="200" step="1" value="34"><span class="val" id="a2ui-offset-y-val">34</span></div>
+      <div style="border-top:1px solid #333; margin:2px 0;"></div>
+      <div class="ctrl-row"><span class="lbl">Chars</span><input id="a2ui-char-count" type="range" min="0" max="200" step="1" value="0"><span class="val" id="a2ui-char-count-val">0</span></div>
+      <div class="ctrl-row"><span class="lbl">Font Size</span><input id="a2ui-font-size" type="range" min="10" max="40" step="1" value="25"><span class="val" id="a2ui-font-size-val">25px</span></div>
+      <div class="ctrl-row"><span class="lbl">Text Pad</span><input id="a2ui-text-pad" type="range" min="-20" max="40" step="1" value="25"><span class="val" id="a2ui-text-pad-val">25</span></div>
+      <div class="ctrl-row"><span class="lbl">Text Top</span><input id="a2ui-text-top" type="range" min="0" max="90" step="1" value="70"><span class="val" id="a2ui-text-top-val">70%</span></div>
+      <div class="ctrl-row"><span class="lbl">Txt Shadow</span><input id="a2ui-text-shadow" type="range" min="0" max="80" step="1" value="10"><span class="val" id="a2ui-text-shadow-val">10</span></div>
+      <div class="ctrl-row"><span class="lbl">Shadow Op</span><input id="a2ui-shadow-opacity" type="range" min="0" max="100" step="5" value="40"><span class="val" id="a2ui-shadow-opacity-val">40%</span></div>
+      <div class="ctrl-row"><span class="lbl">Captions</span><input id="a2ui-captions-on" type="checkbox" checked><span class="val" id="a2ui-captions-on-val">On</span></div>
+      <div class="ctrl-row"><span class="lbl">Cap Speed</span><input id="a2ui-caption-speed" type="range" min="5" max="30" step="1" value="15"><span class="val" id="a2ui-caption-speed-val">15</span></div>
+      <div style="border-top:1px solid #333; margin:2px 0;"></div>
+      <div class="ctrl-row"><span class="lbl">Sm Scale</span><input id="a2ui-logo-sm-scale" type="range" min="0.2" max="4" step="0.05" value="2.5"><span class="val" id="a2ui-logo-sm-scale-val">2.50</span></div>
+      <div class="ctrl-row"><span class="lbl">Sm Y</span><input id="a2ui-logo-sm-y" type="range" min="-200" max="200" step="1" value="7"><span class="val" id="a2ui-logo-sm-y-val">7</span></div>
+      <div class="ctrl-row"><span class="lbl">Lg Scale</span><input id="a2ui-logo-lg-scale" type="range" min="0.2" max="4" step="0.05" value="2.95"><span class="val" id="a2ui-logo-lg-scale-val">2.95</span></div>
+      <div class="ctrl-row"><span class="lbl">Lg Y</span><input id="a2ui-logo-lg-y" type="range" min="-200" max="200" step="1" value="130"><span class="val" id="a2ui-logo-lg-y-val">130</span></div>
+    </div>
+  </div>
+
+  <!-- CDN imports -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    // ════════════════════════════════════════════════════════════
+    //  MODE SWITCHING
+    // ════════════════════════════════════════════════════════════
+
+    const view3d = document.getElementById('view-3d');
+    const viewHolo = document.getElementById('view-hologram');
+    const viewA2ui = document.getElementById('view-a2ui');
+    const btn3d = document.getElementById('btn-3d');
+    const btnHolo = document.getElementById('btn-holo');
+    const btnA2ui = document.getElementById('btn-a2ui');
+    let activeMode = '3d';
+
+    function switchMode(mode) {
+      activeMode = mode;
+      const isA2ui = mode === 'a2ui';
+      view3d.style.display = mode === '3d' ? 'block' : 'none';
+      viewHolo.style.display = mode === 'holo' ? 'flex' : 'none';
+      viewA2ui.style.display = isA2ui ? 'flex' : 'none';
+      btn3d.classList.toggle('active', mode === '3d');
+      btnHolo.classList.toggle('active', mode === 'holo');
+      btnA2ui.classList.toggle('active', mode === 'a2ui');
+      const lp = document.getElementById('a2ui-left-panel');
+      if (lp) {
+        lp.style.display = isA2ui ? 'flex' : 'none';
+        if (isA2ui) requestAnimationFrame(() => { if (typeof buildFlowSVG === 'function') buildFlowSVG(); });
+      }
+      const tl = document.getElementById('a2ui-tool-log');
+      if (tl) tl.style.display = isA2ui ? 'block' : 'none';
+    }
+    btn3d.addEventListener('click', () => switchMode('3d'));
+    btnHolo.addEventListener('click', () => switchMode('holo'));
+    btnA2ui.addEventListener('click', () => switchMode('a2ui'));
+
+    // ════════════════════════════════════════════════════════════
+    //  3D AVATAR (Three.js + Face Tracking)
+    // ════════════════════════════════════════════════════════════
+
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    const { FaceDetector, FilesetResolver } = await import(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.32/+esm'
+    );
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a2e);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 1.2, 3);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
+    document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    dirLight.position.set(2, 3, 4);
+    scene.add(dirLight);
+    const fillLight = new THREE.DirectionalLight(0x8888ff, 0.5);
+    fillLight.position.set(-2, 1, -2);
+    scene.add(fillLight);
+
+    const loader = new GLTFLoader();
+    let model = null, mixer = null;
+
+    loader.load(
+      'cargomessenger_3d_avatar.glb',
+      (gltf) => {
+        model = gltf.scene;
+        scene.add(model);
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        model.position.sub(center);
+        const modelCenter = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const dist = maxDim * 3;
+        camera.position.set(0, modelCenter.y, dist);
+        camera.far = dist * 10;
+        camera.updateProjectionMatrix();
+        camera.lookAt(modelCenter);
+        baseCamDist = dist;
+        modelLookAt.copy(modelCenter);
+        targetAngleX = 0; targetAngleY = 0; currentAngleX = 0; currentAngleY = 0;
+        if (gltf.animations.length > 0) {
+          mixer = new THREE.AnimationMixer(model);
+          mixer.clipAction(gltf.animations[0]).play();
+        }
+        document.getElementById('loading').classList.add('hidden');
+      },
+      (progress) => {
+        if (progress.total > 0)
+          document.getElementById('loading').textContent = `Loading model... ${Math.round((progress.loaded / progress.total) * 100)}%`;
+      },
+      (error) => {
+        console.error('Error loading model:', error);
+        document.getElementById('loading').textContent = 'Failed to load model';
+      }
+    );
+
+    const dbgFace = document.getElementById('dbg-face-detected');
+    const dbgSize = document.getElementById('dbg-face-size');
+    const dbgOffX = document.getElementById('dbg-offset-x');
+    const dbgOffY = document.getElementById('dbg-offset-y');
+    const dbgFps = document.getElementById('dbg-fps');
+
+    const sensXSlider = document.getElementById('sensitivity-x');
+    const sensXVal = document.getElementById('sensitivity-x-val');
+    const sensYSlider = document.getElementById('sensitivity-y');
+    const sensYVal = document.getElementById('sensitivity-y-val');
+    let sensitivityX = 0.5, sensitivityY = -0.5;
+    sensXSlider.addEventListener('input', () => { sensitivityX = parseFloat(sensXSlider.value); sensXVal.textContent = sensitivityX.toFixed(2); });
+    sensYSlider.addEventListener('input', () => { sensitivityY = parseFloat(sensYSlider.value); sensYVal.textContent = sensitivityY.toFixed(2); });
+
+    // Arrow widget
+    const arrowCanvas = document.getElementById('arrow-3d');
+    const arrowScene = new THREE.Scene();
+    arrowScene.background = new THREE.Color(0x111122);
+    const arrowCam = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+    arrowCam.position.set(0, 0, 4); arrowCam.lookAt(0, 0, 0);
+    const arrowRenderer = new THREE.WebGLRenderer({ canvas: arrowCanvas, antialias: true });
+    arrowRenderer.setSize(120, 120); arrowRenderer.setPixelRatio(window.devicePixelRatio);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.2, 8), new THREE.MeshPhongMaterial({ color: 0x00ff88 }));
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.4, 8), new THREE.MeshPhongMaterial({ color: 0x00ff88 }));
+    tip.position.y = 0.8;
+    const arrowPivot = new THREE.Group(); arrowPivot.add(shaft); arrowPivot.add(tip); arrowPivot.rotation.x = Math.PI / 2;
+    const arrowGroup = new THREE.Group(); arrowGroup.add(arrowPivot); arrowScene.add(arrowGroup);
+    arrowScene.add(new THREE.Mesh(new THREE.TorusGeometry(0.7, 0.02, 8, 32), new THREE.MeshBasicMaterial({ color: 0x444466 })).rotateX(Math.PI / 2));
+    arrowScene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const aLight = new THREE.DirectionalLight(0xffffff, 1); aLight.position.set(2, 3, 4); arrowScene.add(aLight);
+
+    let targetArrowRotX = 0, targetArrowRotY = 0;
+    let baseCamDist = 1, modelLookAt = new THREE.Vector3();
+    let targetAngleX = 0, targetAngleY = 0, currentAngleX = 0, currentAngleY = 0;
+
+    // Webcam + Face Detection
+    const video = document.getElementById('webcam-video');
+    const overlay = document.getElementById('face-overlay');
+    const overlayCtx = overlay.getContext('2d');
+    const statusEl = document.getElementById('webcam-status');
+    let mpFaceDetector = null;
+
+    async function initFaceDetection() {
+      statusEl.textContent = 'Loading face model...';
+      const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm');
+      mpFaceDetector = await FaceDetector.createFromOptions(vision, {
+        baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite' },
+        runningMode: 'VIDEO', minDetectionConfidence: 0.5,
+      });
+    }
+
+    async function initWebcam() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
+        video.srcObject = stream; await video.play();
+        overlay.width = video.videoWidth || 640; overlay.height = video.videoHeight || 480;
+        statusEl.textContent = 'Camera active | Loading face model...';
+        await initFaceDetection();
+        statusEl.textContent = 'Camera active | Face detection ON';
+        detectLoop();
+      } catch (err) { console.error('Webcam error:', err); statusEl.textContent = 'Camera unavailable'; }
+    }
+
+    function detectLoop() {
+      if (video.readyState < 2) { requestAnimationFrame(detectLoop); return; }
+      const result = mpFaceDetector.detectForVideo(video, performance.now());
+      drawFaces(result.detections);
+      requestAnimationFrame(detectLoop);
+    }
+
+    function drawFaces(detections) {
+      const w = overlay.width, h = overlay.height;
+      overlayCtx.clearRect(0, 0, w, h);
+      if (detections.length === 0) { dbgFace.textContent = 'No'; dbgSize.textContent = '--'; dbgOffX.textContent = '--'; dbgOffY.textContent = '--'; return; }
+      let biggest = detections[0], biggestArea = 0;
+      for (const det of detections) { const a = det.boundingBox.width * det.boundingBox.height; if (a > biggestArea) { biggestArea = a; biggest = det; } }
+      const bb = biggest.boundingBox;
+      const mx = w - bb.originX - bb.width;
+      overlayCtx.strokeStyle = '#00ff88'; overlayCtx.lineWidth = 2;
+      overlayCtx.strokeRect(mx, bb.originY, bb.width, bb.height);
+      const fcx = mx + bb.width / 2, fcy = bb.originY + bb.height / 2;
+      overlayCtx.beginPath(); overlayCtx.arc(fcx, fcy, 4, 0, Math.PI * 2); overlayCtx.fillStyle = '#00ff88'; overlayCtx.fill();
+      for (const det of detections) { if (det === biggest) continue; const fbb = det.boundingBox; overlayCtx.strokeStyle = 'rgba(255,255,255,0.3)'; overlayCtx.lineWidth = 1; overlayCtx.strokeRect(w - fbb.originX - fbb.width, fbb.originY, fbb.width, fbb.height); }
+      const offsetX = ((fcx / w) - 0.5) * 2;
+      const offsetY = ((fcy / h) - 0.5) * -2;
+      dbgFace.textContent = `Yes (${detections.length} total)`;
+      dbgSize.textContent = `${Math.round(bb.width)}x${Math.round(bb.height)}`;
+      dbgOffX.textContent = offsetX.toFixed(3); dbgOffY.textContent = offsetY.toFixed(3);
+      const maxTilt = Math.PI / 3;
+      targetArrowRotY = offsetX * maxTilt; targetArrowRotX = -offsetY * maxTilt;
+      const maxAngleX = (Math.PI / 4) * sensitivityX;
+      const maxAngleY = (Math.PI / 4) * sensitivityY;
+      targetAngleX = -offsetX * maxAngleX; targetAngleY = offsetY * maxAngleY;
+    }
+
+    initWebcam();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    const clock = new THREE.Clock();
+    let frameCount = 0, lastFpsTime = performance.now();
+
+    function animate3D() {
+      requestAnimationFrame(animate3D);
+      if (activeMode !== '3d') return;
+      const delta = clock.getDelta();
+      if (mixer) mixer.update(delta);
+      currentAngleX += (targetAngleX - currentAngleX) * 0.1;
+      currentAngleY += (targetAngleY - currentAngleY) * 0.1;
+      camera.position.x = modelLookAt.x + baseCamDist * Math.sin(currentAngleX) * Math.cos(currentAngleY);
+      camera.position.y = modelLookAt.y + baseCamDist * Math.sin(currentAngleY);
+      camera.position.z = modelLookAt.z + baseCamDist * Math.cos(currentAngleX) * Math.cos(currentAngleY);
+      camera.lookAt(modelLookAt);
+      renderer.render(scene, camera);
+      arrowGroup.rotation.y += (targetArrowRotY - arrowGroup.rotation.y) * 0.15;
+      arrowGroup.rotation.x += (targetArrowRotX - arrowGroup.rotation.x) * 0.15;
+      arrowRenderer.render(arrowScene, arrowCam);
+      frameCount++;
+      const now = performance.now();
+      if (now - lastFpsTime >= 1000) { dbgFps.textContent = frameCount; frameCount = 0; lastFpsTime = now; }
+    }
+    animate3D();
+
+    // ════════════════════════════════════════════════════════════
+    //  HOLOGRAM (2D Canvas)
+    // ════════════════════════════════════════════════════════════
+
+    const STATES = {
+      IDLE:      { label: "Idle",       accent: "#4A9EFF", gold: "#F5A623", rot: 0.004 },
+      LISTENING: { label: "Listening",  accent: "#6BC0FF", gold: "#F5A623", rot: 0.003 },
+      SPEAKING:  { label: "Speaking",   accent: "#F5A623", gold: "#FF8C00", rot: 0.005 },
+      THINKING:  { label: "Processing", accent: "#8B5CF6", gold: "#B57BFF", rot: 0.006 },
+      SLEEP:     { label: "Sleep",      accent: "#4A9EFF", gold: "#F5A623", rot: 0, cubeStyle: 1 },
+      ERROR:     { label: "Error",      accent: "#667788", gold: "#556677", rot: 0, cubeStyle: 1 },
+    };
+
+    // Spin: ramp up to peak speed, hold briefly, then ease back down
+    const SPIN_PEAK = 0.14;    // peak spin speed (rad/frame)
+    const SPIN_RAMP = 0.12;    // lerp rate for ramp-up
+    const SPIN_BRAKE = 0.06;   // lerp rate for slow-down
+    const SPIN_HOLD = 45;      // frames to hold at peak before braking
+
+    const holoSpin  = { boost: 0, timer: 0 };
+    const a2uiSpin  = { boost: 0, timer: 0 };
+
+    function triggerSpin() {
+      const s = activeMode === 'a2ui' ? a2uiSpin : holoSpin;
+      s.timer = SPIN_HOLD;
+    }
+
+    function updateSpin(s) {
+      if (s.timer > 0) {
+        s.boost = lerp(s.boost, SPIN_PEAK, SPIN_RAMP);
+        s.timer--;
+      } else {
+        s.boost = lerp(s.boost, 0, SPIN_BRAKE);
+        if (s.boost < 0.0001) s.boost = 0;
+      }
+      return s.boost;
+    }
+
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const hexToRgb = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+    const rgbToHex = (r,g,b) => "#" + [r,g,b].map(v => Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,"0")).join("");
+    const lerpColor = (a, b, t) => rgbToHex(...hexToRgb(a).map((v,i) => lerp(v, hexToRgb(b)[i], t)));
+
+    let holoState = "IDLE";
+
+    const holoAnim = {
+      t: 0, phase: 0, rotAngle: 0, lerpRot: 0.004, sw: 0,
+      offsets: [],
+      curAccent: "#4A9EFF", curGold: "#F5A623",
+      speakAmt: 0, thinkAmt: 0, listenAmt: 0, sleepAmt: 0,
+    };
+
+    // Init offsets
+    for (let i = 0; i < 8; i++) holoAnim.offsets.push({ phase: Math.random() * Math.PI * 2, speed: 0.5 + Math.random() * 1.5, amp: 2 + Math.random() * 4 });
+
+    // Build state buttons
+    const btnContainer = document.getElementById('holo-state-buttons');
+    for (const key of Object.keys(STATES)) {
+      const st = STATES[key];
+      const b = document.createElement('button');
+      b.textContent = st.label;
+      b.dataset.state = key;
+      b.addEventListener('click', () => {
+        holoState = key;
+        updateHoloButtons();
+      });
+      btnContainer.appendChild(b);
+    }
+    // Spin button — action, not a state
+    const spinBtn = document.createElement('button');
+    spinBtn.textContent = '↻ Spin';
+    spinBtn.addEventListener('click', () => triggerSpin());
+    btnContainer.appendChild(spinBtn);
+
+    function updateHoloButtons() {
+      for (const b of btnContainer.children) {
+        if (!b.dataset.state) continue; // skip spin button
+        const st = STATES[b.dataset.state];
+        const active = b.dataset.state === holoState;
+        b.style.border = `1px solid ${active ? st.accent : '#222'}`;
+        b.style.background = active ? st.accent + '20' : '#111';
+        b.style.color = active ? st.accent : '#555';
+        b.style.fontWeight = active ? '600' : '400';
+      }
+    }
+    updateHoloButtons();
+
+    // Hologram settings
+    let cubeMode = 'glass'; // 'solid', 'glass', 'wire'
+    let cubeFaceTarget = 0.5; // 0=wire, 0.5=glass, 1=solid
+    let cubeFaceAmt = 0.5;
+    let holoCubeScale = 1.2;
+    let holoAllScale = 1.2;
+    let holoOffsetY = -60;
+    let holoCharCount = 55;
+    let holoFontSize = 25;
+    let holoTextPad = 25;
+    let holoTextTop = 70; // percentage of circle diameter from top
+    let randomText = '';
+
+    function generateRandomText(len) {
+      let result = '';
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      let sinceSpace = 0;
+      // Bell curve peaking at 2-3, range 1-8
+      const nextWord = () => Math.max(1, Math.min(8, Math.round(1 + (Math.random() + Math.random()) * 2.5)));
+      let nextSpace = nextWord();
+      for (let i = 0; i < len; i++) {
+        if (sinceSpace >= nextSpace) { result += ' '; sinceSpace = 0; nextSpace = nextWord(); }
+        else { result += chars[Math.floor(Math.random() * chars.length)]; sinceSpace++; }
+      }
+      return result;
+    }
+    randomText = generateRandomText(holoCharCount);
+
+    const cubeModeContainer = document.getElementById('holo-cube-mode');
+    cubeModeContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-mode]');
+      if (!btn) return;
+      cubeMode = btn.dataset.mode;
+      cubeFaceTarget = cubeMode === 'wire' ? 0 : cubeMode === 'glass' ? 0.5 : 1;
+      for (const b of cubeModeContainer.querySelectorAll('button')) {
+        const active = b.dataset.mode === cubeMode;
+        b.style.border = active ? '1px solid #4A9EFF44' : '1px solid #222';
+        b.style.background = active ? '#4A9EFF20' : '#111';
+        b.style.color = active ? '#4A9EFF' : '#555';
+        b.style.fontWeight = active ? '600' : '400';
+      }
+    });
+    document.getElementById('holo-char-count').addEventListener('input', (e) => {
+      holoCharCount = parseInt(e.target.value);
+      document.getElementById('holo-char-count-val').textContent = holoCharCount;
+      randomText = generateRandomText(holoCharCount);
+    });
+    document.getElementById('holo-font-size').addEventListener('input', (e) => {
+      holoFontSize = parseInt(e.target.value);
+      document.getElementById('holo-font-size-val').textContent = holoFontSize + 'px';
+    });
+    document.getElementById('holo-cube-scale').addEventListener('input', (e) => {
+      holoCubeScale = parseFloat(e.target.value);
+      document.getElementById('holo-cube-scale-val').textContent = holoCubeScale.toFixed(2);
+    });
+    document.getElementById('holo-all-scale').addEventListener('input', (e) => {
+      holoAllScale = parseFloat(e.target.value);
+      document.getElementById('holo-all-scale-val').textContent = holoAllScale.toFixed(2);
+    });
+    document.getElementById('holo-offset-y').addEventListener('input', (e) => {
+      holoOffsetY = parseInt(e.target.value);
+      document.getElementById('holo-offset-y-val').textContent = holoOffsetY;
+    });
+    document.getElementById('holo-text-pad').addEventListener('input', (e) => {
+      holoTextPad = parseInt(e.target.value);
+      document.getElementById('holo-text-pad-val').textContent = holoTextPad;
+    });
+    document.getElementById('holo-text-top').addEventListener('input', (e) => {
+      holoTextTop = parseInt(e.target.value);
+      document.getElementById('holo-text-top-val').textContent = holoTextTop + '%';
+    });
+
+    // Dark thumb when slider is at its default value
+    function updateDefaultClass(el) {
+      el.classList.toggle('at-default', el.value === el.defaultValue);
+    }
+    document.querySelectorAll('#holo-sidebar input[type="range"]').forEach(el => {
+      updateDefaultClass(el);
+      el.addEventListener('input', () => updateDefaultClass(el));
+    });
+
+    // Iso draw order map (first drawn = behind, last = front)
+    const isoDrawList = [7,6,3,2,5,1,4,0];
+    window._isoOrderMap = {};
+    isoDrawList.forEach((idx, rank) => { window._isoOrderMap[idx] = rank; });
+
+    // Canvas setup
+    const hc = document.getElementById('holo-canvas');
+    const W = 600, H = 600;
+    hc.width = W; hc.height = H;
+    const hctx = hc.getContext('2d');
+    const hcx = W / 2, hcy = H / 2;
+    const HR = 270;
+
+    const grid = [];
+    for (let x = 0; x < 2; x++) for (let y = 0; y < 2; y++) for (let z = 0; z < 2; z++) grid.push([x - 0.5, y - 0.5, z - 0.5]);
+
+    function project(x, y, z, ry, rx = 0.5) {
+      let x1 = x * Math.cos(ry) - z * Math.sin(ry);
+      let z1 = x * Math.sin(ry) + z * Math.cos(ry);
+      let y1 = y * Math.cos(rx) - z1 * Math.sin(rx);
+      let z2 = y * Math.sin(rx) + z1 * Math.cos(rx);
+      let s = (420 * holoAllScale) / (4 + z2 * 0.3);
+      const ay = hcy + holoOffsetY;
+      return [hcx + x1 * s, ay + y1 * s, z2];
+    }
+
+    function drawCube(ctx, px, py, sz, color, alpha, glowAmt) {
+      const h = sz, hw = sz * 0.95, hh = sz * 0.55;
+      if (glowAmt > 0.05) {
+        const g = ctx.createRadialGradient(px, py + h * 0.3, 0, px, py + h * 0.3, sz * 3.5);
+        g.addColorStop(0, color + Math.floor(Math.min(255, glowAmt * 80)).toString(16).padStart(2, "0"));
+        g.addColorStop(1, "transparent");
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, py + h * 0.3, sz * 3.5, 0, Math.PI * 2); ctx.fill();
+      }
+      // Continuous face rendering: cubeFaceAmt 0=wire, 0.5=glass, 1=solid
+      const cf = cubeFaceAmt;
+      if (cf > 0.01) {
+        const rgb = hexToRgb(color);
+        // Face opacity: 0 at wire(0), ramps up through glass(0.5) to solid(1)
+        const faceAlpha = Math.min(1, cf * 2); // 0→0, 0.5→1, 1→1
+        // Shading blend: 0 at glass, 1 at solid — darkens color channels for solid look
+        const shadeMix = Math.max(0, (cf - 0.5) * 2); // 0→0, 0.5→0, 1→1
+        // Top face — lerp alpha toward fully opaque as we approach solid
+        const topA = Math.floor(Math.min(255, lerp(alpha, 1, shadeMix) * 255 * faceAlpha));
+        const topR = lerp(rgb[0], rgb[0], shadeMix), topG = lerp(rgb[1], rgb[1], shadeMix), topB = lerp(rgb[2], rgb[2], shadeMix);
+        ctx.fillStyle = rgbToHex(topR, topG, topB) + topA.toString(16).padStart(2, "0");
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + hw, py + hh); ctx.lineTo(px, py + hh * 2); ctx.lineTo(px - hw, py + hh); ctx.closePath(); ctx.fill();
+        // Left face
+        const leftA = Math.floor(Math.min(255, lerp(alpha * 180/255, 1, shadeMix) * 255 * faceAlpha));
+        const leftMul = lerp(1, 0.7, shadeMix);
+        ctx.fillStyle = rgbToHex(rgb[0] * leftMul, rgb[1] * leftMul, rgb[2] * leftMul) + leftA.toString(16).padStart(2, "0");
+        ctx.beginPath(); ctx.moveTo(px - hw, py + hh); ctx.lineTo(px, py + hh * 2); ctx.lineTo(px, py + hh * 2 + h); ctx.lineTo(px - hw, py + hh + h); ctx.closePath(); ctx.fill();
+        // Right face
+        const rightA = Math.floor(Math.min(255, lerp(alpha * 120/255, 1, shadeMix) * 255 * faceAlpha));
+        const rightMul = lerp(1, 0.45, shadeMix);
+        ctx.fillStyle = rgbToHex(rgb[0] * rightMul, rgb[1] * rightMul, rgb[2] * rightMul) + rightA.toString(16).padStart(2, "0");
+        ctx.beginPath(); ctx.moveTo(px + hw, py + hh); ctx.lineTo(px, py + hh * 2); ctx.lineTo(px, py + hh * 2 + h); ctx.lineTo(px + hw, py + hh + h); ctx.closePath(); ctx.fill();
+      }
+      // edges — always drawn
+      const eA = Math.floor(Math.min(255, alpha * 255)).toString(16).padStart(2, "0");
+      const eADim = Math.floor(Math.min(255, alpha * 180)).toString(16).padStart(2, "0");
+      const eADark = Math.floor(Math.min(255, alpha * 120)).toString(16).padStart(2, "0");
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = color + eA;
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + hw, py + hh); ctx.lineTo(px, py + hh * 2); ctx.lineTo(px - hw, py + hh); ctx.closePath(); ctx.stroke();
+      ctx.strokeStyle = color + eADim;
+      ctx.beginPath(); ctx.moveTo(px - hw, py + hh); ctx.lineTo(px - hw, py + hh + h); ctx.moveTo(px, py + hh * 2); ctx.lineTo(px, py + hh * 2 + h); ctx.stroke();
+      ctx.strokeStyle = color + eADark;
+      ctx.beginPath(); ctx.moveTo(px + hw, py + hh); ctx.lineTo(px + hw, py + hh + h); ctx.stroke();
+      ctx.strokeStyle = color + eADim;
+      ctx.beginPath(); ctx.moveTo(px - hw, py + hh + h); ctx.lineTo(px, py + hh * 2 + h); ctx.lineTo(px + hw, py + hh + h); ctx.stroke();
+    }
+
+    const particles = [];
+    for (let i = 0; i < 60; i++) particles.push({ angle: Math.random() * Math.PI * 2, r: 140 + Math.random() * 110, y: (Math.random() - 0.5) * 220, speed: 0.002 + Math.random() * 0.005, size: 1 + Math.random() * 2, phase: Math.random() * Math.PI * 2 });
+
+    function drawHologram() {
+      requestAnimationFrame(drawHologram);
+      if (activeMode !== 'holo') return;
+
+      const a = holoAnim;
+      const st = STATES[holoState];
+      a.t++; a.phase += 0.02;
+      a.sw += holoState === "SPEAKING" ? 0.15 : 0.03;
+      a.lerpRot = lerp(a.lerpRot, st.rot, 0.05);
+      a.rotAngle += a.lerpRot + updateSpin(holoSpin);
+      // In sleep/error, freeze rotation at the nearest equivalent of π/4
+      const base = Math.PI / 4;
+      const nearestSleepAngle = Math.round((a.rotAngle - base) / (Math.PI * 2)) * (Math.PI * 2) + base;
+      const ry = a.sleepAmt > 0.01 ? lerp(a.rotAngle, nearestSleepAngle, a.sleepAmt) : a.rotAngle;
+      if (a.sleepAmt > 0.5) a.rotAngle = lerp(a.rotAngle, nearestSleepAngle, 0.05);
+
+      const tLerp = 0.12;
+      a.curAccent = lerpColor(a.curAccent, st.accent, tLerp);
+      a.curGold = lerpColor(a.curGold, st.gold, tLerp);
+      a.speakAmt = lerp(a.speakAmt, holoState === "SPEAKING" ? 1 : 0, tLerp);
+      // States can override cube style: sleep/error → solid, others → user choice
+      const stateStyle = st.cubeStyle !== undefined ? st.cubeStyle : cubeFaceTarget;
+      cubeFaceAmt = lerp(cubeFaceAmt, stateStyle, 0.08);
+      a.thinkAmt = lerp(a.thinkAmt, holoState === "THINKING" ? 1 : 0, tLerp);
+      a.listenAmt = lerp(a.listenAmt, holoState === "LISTENING" ? 1 : 0, tLerp);
+      a.sleepAmt = lerp(a.sleepAmt, (holoState === "SLEEP" || holoState === "ERROR") ? 1 : 0, 0.12);
+      const ac = a.curAccent, gc = a.curGold;
+
+      hctx.clearRect(0, 0, W, H);
+
+      // Boundary circle
+      hctx.strokeStyle = "#FFFFFF60"; hctx.lineWidth = 1.5;
+      hctx.beginPath(); hctx.arc(hcx, hcy, HR, 0, Math.PI * 2); hctx.stroke();
+
+      const bGrad = hctx.createRadialGradient(hcx, hcy, HR - 20, hcx, hcy, HR + 5);
+      bGrad.addColorStop(0, "transparent"); bGrad.addColorStop(0.8, ac + "06"); bGrad.addColorStop(1, "transparent");
+      hctx.fillStyle = bGrad; hctx.beginPath(); hctx.arc(hcx, hcy, HR + 5, 0, Math.PI * 2); hctx.fill();
+
+      // Particles
+      const pAlpha = lerp(0.2, 0.5, a.speakAmt);
+      particles.forEach(p => {
+        p.angle += p.speed * (1 + a.thinkAmt * 3);
+        const px = hcx + Math.cos(p.angle) * p.r;
+        const py = hcy + p.y + Math.sin(a.phase + p.phase) * 12;
+        const dx = px - hcx, dy = py - hcy;
+        if (dx * dx + dy * dy > HR * HR) return;
+        const flicker = 0.3 + Math.sin(a.t * 0.05 + p.phase) * 0.3;
+        hctx.fillStyle = ac + Math.floor(Math.min(255, pAlpha * flicker * 255)).toString(16).padStart(2, "0");
+        hctx.beginPath(); hctx.arc(px, py, p.size * (1 + a.speakAmt * 0.4), 0, Math.PI * 2); hctx.fill();
+      });
+
+      // Speech wave rings
+      if (a.speakAmt > 0.01) {
+        for (let ring = 0; ring < 3; ring++) {
+          hctx.beginPath(); hctx.strokeStyle = ac + Math.floor(Math.max(0, (25 - ring * 7) * a.speakAmt)).toString(16).padStart(2, "0"); hctx.lineWidth = 1.5;
+          for (let i = 0; i <= 64; i++) {
+            const ang = (i / 64) * Math.PI * 2;
+            const wave = Math.sin(ang * 5 + a.sw - ring * 0.5) * (12 + ring * 6) * a.speakAmt + Math.sin(ang * 3 + a.sw * 1.3) * 8 * a.speakAmt;
+            const r2 = Math.min(HR - 5, 180 + wave + ring * 18);
+            hctx[i === 0 ? "moveTo" : "lineTo"](hcx + Math.cos(ang) * r2, hcy + Math.sin(ang) * r2);
+          }
+          hctx.stroke();
+        }
+      }
+
+      // Listening pulse
+      if (a.listenAmt > 0.01) {
+        const pr = 160 + Math.sin(a.phase * 2) * 25;
+        hctx.beginPath(); hctx.strokeStyle = ac + Math.floor(80 * a.listenAmt).toString(16).padStart(2, "0"); hctx.lineWidth = 2;
+        hctx.arc(hcx, hcy, pr, 0, Math.PI * 2); hctx.stroke();
+        hctx.beginPath(); hctx.strokeStyle = ac + Math.floor(45 * a.listenAmt).toString(16).padStart(2, "0"); hctx.lineWidth = 1.5;
+        hctx.arc(hcx, hcy, pr + 22, 0, Math.PI * 2); hctx.stroke();
+        hctx.beginPath(); hctx.strokeStyle = ac + Math.floor(20 * a.listenAmt).toString(16).padStart(2, "0"); hctx.lineWidth = 1;
+        hctx.arc(hcx, hcy, pr + 44, 0, Math.PI * 2); hctx.stroke();
+      }
+
+      // Thinking orbits
+      if (a.thinkAmt > 0.01) {
+        for (let r = 0; r < 2; r++) {
+          hctx.beginPath(); hctx.strokeStyle = ac + Math.floor(37 * a.thinkAmt).toString(16).padStart(2, "0"); hctx.lineWidth = 1;
+          for (let i = 0; i <= 48; i++) {
+            const ang = (i / 48) * Math.PI * 2;
+            const orx = 150 + r * 25, ory = 50 + r * 15;
+            hctx[i === 0 ? "moveTo" : "lineTo"](hcx + Math.cos(ang + a.t * 0.02 + r) * orx, hcy + Math.sin(ang + a.t * 0.02 + r) * ory);
+          }
+          hctx.stroke();
+        }
+      }
+
+      // Center glow
+      const glowR = 70 + a.speakAmt * 50 + a.listenAmt * 30;
+      const cg = hctx.createRadialGradient(hcx, hcy, 0, hcx, hcy, glowR);
+      cg.addColorStop(0, ac + Math.floor(24 + a.speakAmt * 29).toString(16).padStart(2, "0"));
+      cg.addColorStop(1, "transparent");
+      hctx.fillStyle = cg; hctx.beginPath(); hctx.arc(hcx, hcy, glowR, 0, Math.PI * 2); hctx.fill();
+
+      // Cube grid
+      const projected = grid.map((v, i) => {
+        const off = a.offsets[i] || { phase: 0, speed: 1, amp: 3 };
+        // Normal spread positions
+        let bx = v[0] * 1.3, by = v[1] * 1.3, bz = v[2] * 1.3;
+        if (a.speakAmt > 0.01) { const d = Math.sqrt(v[0]**2 + v[1]**2 + v[2]**2); const expand = Math.sin(a.sw * 2 + d * 2) * 0.15 * a.speakAmt; bx *= 1 + expand; by *= 1 + expand; bz *= 1 + expand; }
+        if (a.thinkAmt > 0.01) { bx += Math.sin(a.t * 0.03 + off.phase) * 0.2 * a.thinkAmt; by += Math.cos(a.t * 0.025 + off.phase * 1.3) * 0.2 * a.thinkAmt; bz += Math.sin(a.t * 0.035 + off.phase * 0.7) * 0.2 * a.thinkAmt; }
+        by += Math.sin(a.t * 0.015 * off.speed + off.phase) * off.amp * 0.015 * (1 - a.sleepAmt);
+        // Sleep/error: lerp toward tight stacked grid, bottom-aligned
+        // v[0],v[1],v[2] are -0.5 or 0.5. Tight stack uses small spacing, shifted so bottom row sits at y~+0.8
+        const stackX = v[0] * 0.52;
+        const stackY = (v[1] + 0.5) * 0.52 + 0.55; // +0.5 makes bottom at 0, +0.55 pushes whole stack down
+        const stackZ = v[2] * 0.52;
+        bx = lerp(bx, stackX, a.sleepAmt);
+        by = lerp(by, stackY, a.sleepAmt);
+        bz = lerp(bz, stackZ, a.sleepAmt);
+        const p = project(bx, by, bz, ry);
+        return { x: p[0], y: p[1], z: p[2], idx: i, v, bx, by, bz };
+      });
+      // Normal mode: sort by projected z (back to front)
+      // Sleep/error mode: hardcoded draw order for isometric π/4 view
+      // Z-sort for rotation, fixed iso order for sleep/error
+      // Swap at sleepAmt=0.5 when cubes are compressed enough to hide it
+      const io = window._isoOrderMap;
+      if (a.sleepAmt < 0.5) {
+        projected.sort((a2, b) => a2.z - b.z);
+      } else {
+        projected.sort((a2, b) => io[a2.idx] - io[b.idx]);
+      }
+      projected.forEach(p => {
+        const rawDepth = 0.5 + (p.z + 1.5) * 0.2;
+        const depth = lerp(rawDepth, 0.8, a.sleepAmt); // uniform size in sleep
+        const sleepScale = lerp(1, 0.55, a.sleepAmt);
+        const sz = 68 * holoCubeScale * depth * sleepScale * (1 + Math.sin(a.sw + p.idx * 0.5) * 0.06 * a.speakAmt);
+        const alpha = Math.max(0.35, Math.min(1, depth));
+        const glow = lerp(0.1, 0.6, a.speakAmt);
+        const colorBlend = Math.sin(a.sw + p.idx * 0.7) > 0.2 ? a.speakAmt : 0;
+        const col = lerpColor(ac, gc, colorBlend);
+        drawCube(hctx, p.x, p.y - 20, sz, col, alpha, glow);
+      });
+
+      // Text area: bounded by horizontal line at 75% from top, and bottom arc of circle
+      // Top line Y: hcy - HR is top of circle, 75% down = hcy - HR + 0.75 * 2 * HR = hcy + 0.5 * HR
+      const textTopY = hcy - HR + (holoTextTop / 100) * 2 * HR;
+      const textPad = holoTextPad;
+      const lineH = holoFontSize * 1.3;
+
+      // Draw text area boundary (bottom arc only, no top line)
+      hctx.strokeStyle = "#FFFFFF25"; hctx.lineWidth = 1;
+      const dyTop = textTopY - hcy;
+      const chordHalfW = Math.sqrt(Math.max(0, HR * HR - dyTop * dyTop));
+      const startAngle = Math.asin(dyTop / HR);
+      hctx.beginPath();
+      hctx.arc(hcx, hcy, HR, startAngle, Math.PI - startAngle);
+      hctx.stroke();
+
+      // Render random text inside the bounded area
+      if (holoCharCount > 0 && randomText.length > 0) {
+        hctx.font = `400 ${holoFontSize}px system-ui, sans-serif`;
+        hctx.fillStyle = 'rgba(255,255,255,0.85)';
+        hctx.textAlign = 'center';
+
+        // Word-wrap into lines that fit the chord width at each Y level
+        const words = randomText.split(' ');
+        const lines = [];
+        let currentLine = '';
+        let currentY = textTopY + textPad + holoFontSize;
+
+        for (const word of words) {
+          // Calculate available width at currentY
+          const dy = currentY - hcy;
+          const maxHalfW = dy * dy < HR * HR ? Math.sqrt(HR * HR - dy * dy) - textPad : 0;
+          const maxW = maxHalfW * 2;
+          if (maxW <= 0) break; // past the circle
+
+          const testLine = currentLine ? currentLine + ' ' + word : word;
+          if (hctx.measureText(testLine).width > maxW && currentLine) {
+            lines.push({ text: currentLine, y: currentY });
+            currentLine = word;
+            currentY += lineH;
+            // Check if next line is still inside circle
+            const dy2 = currentY - hcy;
+            if (dy2 * dy2 >= HR * HR) break;
+          } else {
+            currentLine = testLine;
+          }
+        }
+        if (currentLine) {
+          const dy = currentY - hcy;
+          if (dy * dy < HR * HR) lines.push({ text: currentLine, y: currentY });
+        }
+
+        // Center the block vertically in the available space
+        const textBottomY = hcy + HR - textPad;
+        const blockHeight = lines.length > 0 ? (lines[lines.length - 1].y - lines[0].y + lineH) : 0;
+        const availHeight = textBottomY - (textTopY + textPad);
+        const offsetY = Math.max(0, (availHeight - blockHeight) / 2);
+
+        lines.forEach(l => {
+          hctx.fillText(l.text, hcx, l.y + offsetY);
+        });
+      }
+    }
+    drawHologram();
+
+    // ════════════════════════════════════════════════════════════
+    //  HOLOGRAM + A2UI (independent copy)
+    // ════════════════════════════════════════════════════════════
+
+    let a2uiState = "SLEEP";
+    let a2uiShowContent = false;
+    let a2uiContentAmt = 0;
+    const a2uiAnim = {
+      t: 0, phase: 0, rotAngle: 0, lerpRot: 0.004, sw: 0,
+      offsets: [],
+      curAccent: "#4A9EFF", curGold: "#F5A623",
+      speakAmt: 0, thinkAmt: 0, listenAmt: 0, sleepAmt: 0,
+    };
+    for (let i = 0; i < 8; i++) a2uiAnim.offsets.push({ phase: Math.random() * Math.PI * 2, speed: 0.5 + Math.random() * 1.5, amp: 2 + Math.random() * 4 });
+
+    let a2uiCubeMode = 'glass';
+    let a2uiCubeFaceTarget = 0.5;
+    let a2uiCubeFaceAmt = 0.5;
+    let a2uiCubeScale = 0.9, a2uiAllScale = 0.9, a2uiOffsetY = 34;
+    let a2uiCharCount = 0, a2uiFontSize = 25, a2uiTextPad = 25, a2uiTextTop = 70;
+    let a2uiRandomText = '';
+
+    // ── Element System ──
+    let activeElement = null;      // { type, data, animState, createdAt }
+    let previousElement = null;
+    let prevElementAlpha = 0;
+    let elementFadeIn = 0;
+
+    const PRODUCTS = {
+      cargomessenger: { name: 'CargoMessenger', tagline: 'Real-Time Logistics Communication', highlights: ['Instant team messaging', 'File & photo sharing', 'Shipment-linked threads', 'Mobile & desktop sync'] },
+      document_intelligence: { name: 'Document Intelligence', tagline: 'AI-Powered Document Processing', highlights: ['Automated OCR extraction', 'Smart classification', 'Multi-format support', '99.2% accuracy rate'] },
+      cargo_screening: { name: 'Cargo Screening Suite', tagline: 'TSA-Compliant Air Cargo Security', highlights: ['TSA-compliant workflows', 'Real-time status tracking', 'Automated audit trails', 'Multi-carrier support'] },
+      cargowise_integration: { name: 'CargoWise Integration', tagline: 'Seamless System Synchronization', highlights: ['Bi-directional sync', 'Real-time data flow', 'Zero manual entry', 'Custom field mapping'] },
+      load_optimizer: { name: '3D Load Optimizer', tagline: 'Intelligent Container Packing', highlights: ['3D visualization', 'Weight distribution', 'Multi-container planning', 'Load rule compliance'] },
+      dimensioning: { name: 'Dimensioning & Weighing', tagline: 'Multi-Device Integration Hub', highlights: ['Certified measurements', 'Multi-device support', 'Auto-capture workflow', 'Compliance reporting'] },
+      workflow_designer: { name: 'Workflow Designer', tagline: 'No-Code Process Builder', highlights: ['Drag-and-drop builder', 'Custom triggers & actions', 'Template library', 'Real-time monitoring'] },
+      cargo_vision: { name: 'Cargo Vision', tagline: 'AI-Powered Inventory Intelligence', highlights: ['Visual inventory scans', 'Damage detection', 'Automated counting', 'Photo documentation'] }
+    };
+
+    // Layout utilities
+    function circleChordWidth(y) { const dy = y - hcy; return dy * dy < HR * HR ? Math.sqrt(HR * HR - dy * dy) * 2 : 0; }
+    function circleLeftX(y) { const dy = y - hcy; return dy * dy < HR * HR ? hcx - Math.sqrt(HR * HR - dy * dy) : hcx; }
+    function easeOutCubic(t) { return 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3); }
+    function easeOutBack(t) { t = Math.min(1, Math.max(0, t)); const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); }
+    function easeOutExpo(t) { return t >= 1 ? 1 : 1 - Math.pow(2, -10 * Math.min(1, Math.max(0, t))); }
+
+    function roundedRect(ctx, x, y, w, h, r) {
+      ctx.beginPath(); ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r); ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h); ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r); ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+    }
+
+    function glowText(ctx, text, x, y, color, blur) {
+      ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = blur || 12; ctx.fillText(text, x, y); ctx.restore();
+    }
+
+    // Product icon line-art
+    function drawProductIcon(ctx, type, cx, cy, s, color) {
+      ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      switch (type) {
+        case 'cargomessenger':
+          ctx.beginPath(); ctx.moveTo(cx - s, cy - s * 0.6); ctx.lineTo(cx + s, cy - s * 0.6);
+          ctx.quadraticCurveTo(cx + s * 1.2, cy - s * 0.6, cx + s * 1.2, cy * 0 + cy);
+          ctx.lineTo(cx + s * 1.2, cy + s * 0.3); ctx.quadraticCurveTo(cx + s * 1.2, cy + s * 0.6, cx + s * 0.5, cy + s * 0.6);
+          ctx.lineTo(cx - s * 0.2, cy + s); ctx.lineTo(cx, cy + s * 0.6); ctx.lineTo(cx - s, cy + s * 0.6);
+          ctx.quadraticCurveTo(cx - s * 1.2, cy + s * 0.6, cx - s * 1.2, cy);
+          ctx.quadraticCurveTo(cx - s * 1.2, cy - s * 0.6, cx - s, cy - s * 0.6); ctx.stroke();
+          for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.arc(cx + i * s * 0.35, cy - s * 0.05, s * 0.08, 0, Math.PI * 2); ctx.fill(); }
+          break;
+        case 'document_intelligence':
+          ctx.strokeRect(cx - s * 0.7, cy - s, s * 1.4, s * 2);
+          for (let i = 0; i < 3; i++) { const ly = cy - s * 0.4 + i * s * 0.5; ctx.beginPath(); ctx.moveTo(cx - s * 0.4, ly); ctx.lineTo(cx + s * (0.4 - i * 0.1), ly); ctx.stroke(); }
+          break;
+        case 'cargo_screening':
+          ctx.beginPath(); ctx.moveTo(cx, cy - s); ctx.quadraticCurveTo(cx + s, cy - s * 0.7, cx + s, cy);
+          ctx.quadraticCurveTo(cx + s, cy + s * 0.8, cx, cy + s); ctx.quadraticCurveTo(cx - s, cy + s * 0.8, cx - s, cy);
+          ctx.quadraticCurveTo(cx - s, cy - s * 0.7, cx, cy - s); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx - s * 0.3, cy); ctx.lineTo(cx - s * 0.05, cy + s * 0.3); ctx.lineTo(cx + s * 0.35, cy - s * 0.25); ctx.stroke();
+          break;
+        case 'cargowise_integration':
+          ctx.beginPath(); ctx.arc(cx - s * 0.3, cy, s * 0.55, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath(); ctx.arc(cx + s * 0.3, cy, s * 0.55, 0, Math.PI * 2); ctx.stroke();
+          break;
+        case 'load_optimizer':
+          ctx.beginPath(); ctx.moveTo(cx, cy - s); ctx.lineTo(cx + s, cy - s * 0.4); ctx.lineTo(cx + s, cy + s * 0.5);
+          ctx.lineTo(cx, cy + s); ctx.lineTo(cx - s, cy + s * 0.5); ctx.lineTo(cx - s, cy - s * 0.4); ctx.closePath(); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx, cy - s); ctx.lineTo(cx, cy + s * 0.1); ctx.moveTo(cx, cy + s * 0.1);
+          ctx.lineTo(cx + s, cy - s * 0.4); ctx.moveTo(cx, cy + s * 0.1); ctx.lineTo(cx - s, cy - s * 0.4); ctx.stroke();
+          break;
+        case 'dimensioning':
+          ctx.strokeRect(cx - s, cy - s * 0.3, s * 2, s * 0.6);
+          for (let i = 0; i < 5; i++) { const tx = cx - s + s * 0.4 * i + s * 0.2; ctx.beginPath(); ctx.moveTo(tx, cy - s * 0.3); ctx.lineTo(tx, cy - s * 0.05); ctx.stroke(); }
+          break;
+        case 'workflow_designer':
+          [[-0.6, -0.3], [0.6, -0.3], [0, 0.5]].forEach(n => { ctx.beginPath(); ctx.arc(cx + n[0] * s, cy + n[1] * s, s * 0.2, 0, Math.PI * 2); ctx.stroke(); });
+          ctx.beginPath(); ctx.moveTo(cx - s * 0.4, cy - s * 0.3); ctx.lineTo(cx + s * 0.4, cy - s * 0.3); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx - s * 0.5, cy - s * 0.15); ctx.lineTo(cx - s * 0.1, cy + s * 0.35); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(cx + s * 0.5, cy - s * 0.15); ctx.lineTo(cx + s * 0.1, cy + s * 0.35); ctx.stroke();
+          break;
+        case 'cargo_vision':
+          ctx.beginPath(); ctx.moveTo(cx - s, cy); ctx.quadraticCurveTo(cx, cy - s * 0.8, cx + s, cy);
+          ctx.quadraticCurveTo(cx, cy + s * 0.8, cx - s, cy); ctx.stroke();
+          ctx.beginPath(); ctx.arc(cx, cy, s * 0.3, 0, Math.PI * 2); ctx.stroke();
+          break;
+      }
+      ctx.restore();
+    }
+
+    // ── Element Renderers ──
+
+    function drawProductElement(ctx, el, t) {
+      const data = el.data;
+      const product = PRODUCTS[data.product] || PRODUCTS.cargomessenger;
+      const highlights = data.highlights || product.highlights;
+      const enterT = easeOutCubic(t / 0.8);
+
+      // Icon glow
+      const iconY = hcy - HR * 0.55;
+      const pulse = 0.7 + Math.sin(t * 3) * 0.3;
+      const iconGrad = ctx.createRadialGradient(hcx, iconY, 0, hcx, iconY, 40);
+      iconGrad.addColorStop(0, `rgba(74,158,255,${0.25 * pulse * enterT})`);
+      iconGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = iconGrad; ctx.beginPath(); ctx.arc(hcx, iconY, 40, 0, Math.PI * 2); ctx.fill();
+      drawProductIcon(ctx, data.product, hcx, iconY, 20, `rgba(74,158,255,${0.9 * enterT})`);
+
+      // Product name
+      const nameY = hcy - HR * 0.28;
+      ctx.font = `700 28px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const nameGrad = ctx.createLinearGradient(hcx - 80, nameY, hcx + 80, nameY);
+      nameGrad.addColorStop(0, '#FF8C00'); nameGrad.addColorStop(1, '#F5A623');
+      ctx.fillStyle = nameGrad;
+      ctx.globalAlpha = enterT;
+      glowText(ctx, product.name, hcx, nameY, '#FF6B35', 15 * enterT);
+
+      // Tagline
+      ctx.font = `400 16px system-ui, sans-serif`; ctx.fillStyle = 'rgba(200,210,230,0.8)';
+      ctx.globalAlpha = enterT;
+      ctx.fillText(product.tagline, hcx, nameY + 32);
+
+      // Highlight bullets
+      if (highlights && highlights.length > 0) {
+        const startY = hcy - HR * 0.02;
+        const lineH = 38;
+        ctx.font = `400 18px system-ui, sans-serif`; ctx.textAlign = 'left';
+        highlights.forEach((h, i) => {
+          const itemT = easeOutCubic((t - 0.3 - i * 0.15) / 0.5);
+          if (itemT <= 0) return;
+          const y = startY + i * lineH;
+          const leftX = circleLeftX(y) + 35;
+          ctx.globalAlpha = itemT;
+          // Diamond marker
+          ctx.fillStyle = '#F5A623'; ctx.save(); ctx.translate(leftX, y); ctx.rotate(Math.PI / 4);
+          ctx.fillRect(-4, -4, 8, 8); ctx.restore();
+          // Text
+          ctx.fillStyle = 'rgba(255,255,255,0.88)'; ctx.fillText(h, leftX + 18, y + 5);
+        });
+      }
+    }
+
+    function drawStatsElement(ctx, el, t) {
+      const data = el.data;
+      const stats = data.stats || [];
+      const title = data.title || 'Key Metrics';
+      const enterT = easeOutCubic(t / 0.6);
+
+      // Title
+      ctx.font = `700 24px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.globalAlpha = enterT;
+      glowText(ctx, title, hcx, hcy - HR * 0.55, '#4A9EFF', 10);
+
+      // Stats in row or 2x2 grid
+      const count = Math.min(stats.length, 4);
+      const is2x2 = count > 2;
+      const cols = is2x2 ? 2 : count;
+      const rows = is2x2 ? 2 : 1;
+      const cardW = HR * 0.7;
+      const cardH = HR * 0.45;
+      const gapX = 20, gapY = 20;
+
+      stats.slice(0, 4).forEach((stat, i) => {
+        const col = i % cols, row = Math.floor(i / cols);
+        const cx = hcx + (col - (cols - 1) / 2) * (cardW + gapX);
+        const cy2 = hcy - HR * 0.15 + row * (cardH + gapY);
+        const statT = easeOutCubic((t - 0.2 - i * 0.15) / 0.6);
+        if (statT <= 0) return;
+        ctx.globalAlpha = statT;
+
+        // Card background
+        roundedRect(ctx, cx - cardW / 2, cy2 - cardH / 2, cardW, cardH, 10);
+        ctx.fillStyle = 'rgba(10,20,40,0.6)'; ctx.fill();
+        ctx.strokeStyle = 'rgba(74,158,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+
+        // Count-up number
+        const countUpT = easeOutExpo((t - 0.4 - i * 0.15) / 1.5);
+        const rawVal = String(stat.value);
+        const numMatch = rawVal.match(/^([\d,.]+)(.*)/);
+        let displayVal = rawVal;
+        if (numMatch) {
+          const numPart = parseFloat(numMatch[1].replace(/,/g, ''));
+          const suffix = numMatch[2] || '';
+          const current = numPart * countUpT;
+          displayVal = (numPart >= 100 ? Math.round(current).toLocaleString() : current.toFixed(numPart % 1 !== 0 ? 1 : 0)) + suffix;
+        }
+        ctx.font = `700 32px system-ui, sans-serif`; ctx.textAlign = 'center';
+        const numGrad = ctx.createLinearGradient(cx - 30, cy2 - 10, cx + 30, cy2 - 10);
+        numGrad.addColorStop(0, '#FF8C00'); numGrad.addColorStop(1, '#F5A623');
+        ctx.fillStyle = numGrad;
+        glowText(ctx, displayVal, cx, cy2 - 8, '#F5A623', 8);
+
+        // Label
+        ctx.font = `400 14px system-ui, sans-serif`; ctx.fillStyle = 'rgba(200,210,230,0.75)';
+        ctx.fillText(stat.label, cx, cy2 + 22);
+      });
+    }
+
+    function drawClientsElement(ctx, el, t) {
+      const data = el.data;
+      const title = data.title || 'Trusted By Industry Leaders';
+      const clients = data.clients || ['DHL Global Forwarding', 'Quest Diagnostics', 'JAS Worldwide'];
+      const enterT = easeOutCubic(t / 0.6);
+
+      // Title
+      ctx.font = `700 22px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.globalAlpha = enterT;
+      glowText(ctx, title, hcx, hcy - HR * 0.55, '#4A9EFF', 10);
+
+      // Orbiting clients on elliptical path
+      const orbitRx = HR * 0.55, orbitRy = HR * 0.22;
+      const orbitCy = hcy - HR * 0.05;
+      const speed = 0.4;
+      ctx.font = `600 20px system-ui, sans-serif`;
+      clients.forEach((name, i) => {
+        const angle = (i / clients.length) * Math.PI * 2 + t * speed;
+        const x = hcx + Math.cos(angle) * orbitRx;
+        const y = orbitCy + Math.sin(angle) * orbitRy;
+        const depth = (Math.sin(angle) + 1) / 2; // 0=back, 1=front
+        const alpha = 0.3 + depth * 0.6;
+        const scale = 0.7 + depth * 0.3;
+        ctx.globalAlpha = alpha * enterT;
+        ctx.font = `600 ${Math.round(20 * scale)}px system-ui, sans-serif`;
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        glowText(ctx, name, x, y, '#4A9EFF', 6 * depth);
+      });
+
+      // Star rating
+      ctx.globalAlpha = enterT;
+      const starY = hcy + HR * 0.45;
+      ctx.font = `400 16px system-ui, sans-serif`; ctx.fillStyle = 'rgba(245,166,35,0.9)';
+      const stars = '★★★★★';
+      ctx.fillText(stars, hcx, starY);
+      ctx.font = `400 14px system-ui, sans-serif`; ctx.fillStyle = 'rgba(200,210,230,0.7)';
+      ctx.fillText('4.8/5 · 250+ reviews', hcx, starY + 24);
+    }
+
+    function drawComparisonElement(ctx, el, t) {
+      const data = el.data;
+      const enterT = easeOutCubic(t / 0.6);
+
+      // Titles
+      ctx.font = `700 20px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.globalAlpha = enterT;
+      const titleY = hcy - HR * 0.55;
+      ctx.fillStyle = 'rgba(255,120,120,0.85)';
+      glowText(ctx, data.left_title || 'Before', hcx - HR * 0.32, titleY, '#FF4444', 8);
+      ctx.fillStyle = 'rgba(100,255,150,0.85)';
+      glowText(ctx, data.right_title || 'After', hcx + HR * 0.32, titleY, '#44FF88', 8);
+
+      // Glowing center divider
+      const divTop = titleY + 20, divBot = hcy + HR * 0.6;
+      const divGrad = ctx.createLinearGradient(hcx, divTop, hcx, divBot);
+      divGrad.addColorStop(0, 'rgba(74,158,255,0)'); divGrad.addColorStop(0.3, 'rgba(74,158,255,0.5)');
+      divGrad.addColorStop(0.7, 'rgba(74,158,255,0.5)'); divGrad.addColorStop(1, 'rgba(74,158,255,0)');
+      ctx.strokeStyle = divGrad; ctx.lineWidth = 1.5; ctx.shadowColor = '#4A9EFF'; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.moveTo(hcx, divTop); ctx.lineTo(hcx, divBot); ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Rows
+      const items = data.items || [];
+      const startY = hcy - HR * 0.32;
+      const lineH = 36;
+      ctx.font = `400 16px system-ui, sans-serif`;
+      items.slice(0, 6).forEach((item, i) => {
+        const rowT = easeOutCubic((t - 0.3 - i * 0.12) / 0.5);
+        if (rowT <= 0) return;
+        const y = startY + i * lineH;
+        ctx.globalAlpha = rowT;
+        // Left side (slides from left)
+        const leftOffset = (1 - rowT) * -40;
+        ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,160,160,0.75)';
+        ctx.fillText(item.left, hcx - 18 + leftOffset, y);
+        // Right side (slides from right)
+        const rightOffset = (1 - rowT) * 40;
+        ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(140,255,180,0.9)';
+        ctx.fillText(item.right, hcx + 18 + rightOffset, y);
+      });
+    }
+
+    function drawWorkflowElement(ctx, el, t) {
+      const data = el.data;
+      const title = data.title || 'Process Flow';
+      const steps = (data.steps || []).slice(0, 6);
+      const enterT = easeOutCubic(t / 0.8);
+      const count = steps.length;
+
+      // Title
+      ctx.font = `700 22px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.globalAlpha = enterT;
+      glowText(ctx, title, hcx, hcy - HR * 0.6, '#4A9EFF', 10);
+
+      // Steps arranged in a circle
+      const stepsR = HR * 0.38;
+      const stepsCy = hcy + HR * 0.05;
+      const activeIdx = Math.floor(t / 2) % count;
+
+      steps.forEach((step, i) => {
+        const angle = (i / count) * Math.PI * 2 - Math.PI / 2;
+        const sx = hcx + Math.cos(angle) * stepsR;
+        const sy = stepsCy + Math.sin(angle) * stepsR;
+        const stepT = easeOutCubic((t - 0.2 - i * 0.1) / 0.5);
+        if (stepT <= 0) return;
+        const isActive = i === activeIdx;
+
+        ctx.globalAlpha = stepT;
+        // Node circle
+        const nodeR = 24;
+        ctx.beginPath(); ctx.arc(sx, sy, nodeR, 0, Math.PI * 2);
+        ctx.fillStyle = isActive ? 'rgba(74,158,255,0.25)' : 'rgba(10,20,40,0.6)';
+        ctx.fill();
+        ctx.strokeStyle = isActive ? 'rgba(74,158,255,0.8)' : 'rgba(74,158,255,0.3)';
+        ctx.lineWidth = isActive ? 2 : 1;
+        if (isActive) { ctx.shadowColor = '#4A9EFF'; ctx.shadowBlur = 12; }
+        ctx.stroke(); ctx.shadowBlur = 0;
+
+        // Step number
+        ctx.font = `700 14px system-ui, sans-serif`; ctx.textAlign = 'center';
+        ctx.fillStyle = isActive ? '#4A9EFF' : 'rgba(200,210,230,0.7)';
+        ctx.fillText(String(i + 1), sx, sy + 1);
+
+        // Label below node
+        ctx.font = `400 12px system-ui, sans-serif`;
+        ctx.fillStyle = isActive ? 'rgba(255,255,255,0.95)' : 'rgba(200,210,230,0.65)';
+        ctx.fillText(step.label, sx, sy + nodeR + 16);
+
+        // Arrow to next step
+        if (i < count - 1) {
+          const nextAngle = ((i + 1) / count) * Math.PI * 2 - Math.PI / 2;
+          const nx = hcx + Math.cos(nextAngle) * stepsR;
+          const ny = stepsCy + Math.sin(nextAngle) * stepsR;
+          const dx = nx - sx, dy = ny - sy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const ux = dx / dist, uy = dy / dist;
+          ctx.beginPath();
+          ctx.moveTo(sx + ux * (nodeR + 4), sy + uy * (nodeR + 4));
+          ctx.lineTo(nx - ux * (nodeR + 4), ny - uy * (nodeR + 4));
+          ctx.strokeStyle = 'rgba(74,158,255,0.2)'; ctx.lineWidth = 1; ctx.stroke();
+
+          // Pulse particle
+          const pulseT = (t * 0.5 + i * 0.2) % 1;
+          const px = sx + ux * (nodeR + 4 + (dist - 2 * nodeR - 8) * pulseT);
+          const py = sy + uy * (nodeR + 4 + (dist - 2 * nodeR - 8) * pulseT);
+          ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(74,158,255,0.6)'; ctx.fill();
+        }
+      });
+    }
+
+    function drawHeroElement(ctx, el, t) {
+      const data = el.data;
+      const text = data.text || '';
+      const subtitle = data.subtitle || '';
+      const style = data.style || 'glow';
+      const enterT = easeOutCubic(t / 0.8);
+
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+      if (style === 'typewriter') {
+        const charIdx = Math.min(text.length, Math.floor(t * 18));
+        const shown = text.substring(0, charIdx);
+        ctx.font = `700 36px system-ui, sans-serif`;
+        const grad = ctx.createLinearGradient(hcx - 120, hcy, hcx + 120, hcy);
+        grad.addColorStop(0, '#FF8C00'); grad.addColorStop(1, '#F5A623');
+        ctx.fillStyle = grad; ctx.globalAlpha = 1;
+        // Word wrap
+        const maxW = HR * 1.4;
+        const words = shown.split(' ');
+        const lines = []; let cur = '';
+        for (const w of words) { const test = cur ? cur + ' ' + w : w; if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; } else cur = test; }
+        if (cur) lines.push(cur);
+        const lineH = 46;
+        const startY = hcy - (lines.length - 1) * lineH / 2;
+        lines.forEach((l, i) => { glowText(ctx, l, hcx, startY + i * lineH, '#FF6B35', 20); });
+        // Blinking cursor
+        if (charIdx < text.length && Math.sin(t * 6) > 0) {
+          const lastLine = lines[lines.length - 1] || '';
+          const lastW = ctx.measureText(lastLine).width;
+          ctx.fillStyle = '#F5A623'; ctx.fillRect(hcx + lastW / 2 + 4, startY + (lines.length - 1) * lineH - 18, 3, 36);
+        }
+      } else {
+        // glow or fade
+        const alpha = style === 'fade' ? easeOutCubic(t / 2) : enterT;
+        ctx.font = `700 38px system-ui, sans-serif`; ctx.globalAlpha = alpha;
+        const grad = ctx.createLinearGradient(hcx - 120, hcy, hcx + 120, hcy);
+        grad.addColorStop(0, '#FF8C00'); grad.addColorStop(1, '#F5A623');
+        ctx.fillStyle = grad;
+        // Word wrap
+        const maxW = HR * 1.4;
+        const words = text.split(' ');
+        const lines = []; let cur = '';
+        for (const w of words) { const test = cur ? cur + ' ' + w : w; if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; } else cur = test; }
+        if (cur) lines.push(cur);
+        const lineH = 48;
+        const startY = hcy - (lines.length - 1) * lineH / 2 - (subtitle ? 15 : 0);
+        const glowAmt = style === 'glow' ? 15 + Math.sin(t * 2) * 8 : 10;
+        lines.forEach((l, i) => { glowText(ctx, l, hcx, startY + i * lineH, '#FF6B35', glowAmt); });
+      }
+
+      // Subtitle
+      if (subtitle) {
+        const subT = easeOutCubic((t - 0.5) / 0.6);
+        if (subT > 0) {
+          ctx.font = `400 18px system-ui, sans-serif`; ctx.fillStyle = 'rgba(200,210,230,0.8)';
+          ctx.globalAlpha = subT;
+          ctx.fillText(subtitle, hcx, hcy + 50);
+        }
+      }
+    }
+
+    function drawChartElement(ctx, el, t) {
+      const data = el.data;
+      const chartType = data.chart_type || 'bar';
+      const title = data.title || 'Data';
+      const items = data.data || [];
+      const enterT = easeOutCubic(t / 0.6);
+
+      // Title
+      ctx.font = `700 22px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.globalAlpha = enterT;
+      glowText(ctx, title, hcx, hcy - HR * 0.6, '#4A9EFF', 10);
+
+      const maxVal = Math.max(...items.map(d => d.value), 1);
+
+      if (chartType === 'bar') {
+        const barCount = Math.min(items.length, 6);
+        const chartW = HR * 1.2;
+        const chartH = HR * 0.7;
+        const barW = chartW / barCount * 0.6;
+        const gap = chartW / barCount * 0.4;
+        const baseY = hcy + HR * 0.4;
+        const startX = hcx - chartW / 2 + gap / 2;
+
+        items.slice(0, 6).forEach((item, i) => {
+          const barT = easeOutBack((t - 0.3 - i * 0.12) / 0.8);
+          if (barT <= 0) return;
+          const h = (item.value / maxVal) * chartH * barT;
+          const x = startX + i * (barW + gap);
+          ctx.globalAlpha = barT;
+
+          // Bar gradient
+          const barGrad = ctx.createLinearGradient(x, baseY, x, baseY - h);
+          barGrad.addColorStop(0, 'rgba(74,158,255,0.6)'); barGrad.addColorStop(1, 'rgba(245,166,35,0.8)');
+          ctx.fillStyle = barGrad;
+          roundedRect(ctx, x, baseY - h, barW, h, 4); ctx.fill();
+          ctx.shadowColor = '#4A9EFF'; ctx.shadowBlur = 6; ctx.stroke(); ctx.shadowBlur = 0;
+
+          // Value on top
+          ctx.font = `700 14px system-ui, sans-serif`; ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgba(245,166,35,0.9)';
+          ctx.fillText(String(item.value), x + barW / 2, baseY - h - 10);
+
+          // Label below
+          ctx.font = `400 11px system-ui, sans-serif`; ctx.fillStyle = 'rgba(200,210,230,0.7)';
+          ctx.fillText(item.label, x + barW / 2, baseY + 16);
+        });
+      } else if (chartType === 'radial') {
+        const ringCount = Math.min(items.length, 5);
+        const maxR = HR * 0.48;
+        const minR = HR * 0.12;
+        const ringW = (maxR - minR) / ringCount - 4;
+
+        items.slice(0, 5).forEach((item, i) => {
+          const ringT = easeOutCubic((t - 0.3 - i * 0.15) / 1.0);
+          if (ringT <= 0) return;
+          const r = minR + i * (ringW + 4) + ringW / 2;
+          const sweep = (item.value / maxVal) * Math.PI * 1.8 * ringT;
+          ctx.globalAlpha = 0.8;
+
+          ctx.beginPath(); ctx.arc(hcx, hcy + HR * 0.05, r, -Math.PI / 2, -Math.PI / 2 + sweep);
+          const ringGrad = ctx.createLinearGradient(hcx - r, hcy, hcx + r, hcy);
+          ringGrad.addColorStop(0, `hsl(${200 + i * 30}, 80%, 55%)`); ringGrad.addColorStop(1, `hsl(${30 + i * 15}, 90%, 55%)`);
+          ctx.strokeStyle = ringGrad; ctx.lineWidth = ringW; ctx.lineCap = 'round';
+          ctx.shadowColor = `hsl(${200 + i * 30}, 80%, 55%)`; ctx.shadowBlur = 6;
+          ctx.stroke(); ctx.shadowBlur = 0;
+
+          // Label
+          const labelAngle = -Math.PI / 2 + sweep;
+          ctx.font = `400 12px system-ui, sans-serif`; ctx.textAlign = 'left';
+          ctx.fillStyle = 'rgba(200,210,230,0.75)';
+          const lx = hcx + Math.cos(labelAngle) * (r + ringW / 2 + 8);
+          const ly = hcy + HR * 0.05 + Math.sin(labelAngle) * (r + ringW / 2 + 8);
+          ctx.fillText(`${item.label}: ${item.value}`, lx, ly);
+        });
+      } else {
+        // Line chart
+        const chartW = HR * 1.3, chartH = HR * 0.65;
+        const baseY = hcy + HR * 0.35;
+        const startX = hcx - chartW / 2;
+        const lineT = easeOutCubic((t - 0.3) / 1.2);
+        if (lineT <= 0) return;
+
+        const points = items.slice(0, 8).map((item, i) => ({
+          x: startX + (i / (Math.max(items.length - 1, 1))) * chartW,
+          y: baseY - (item.value / maxVal) * chartH,
+          label: item.label, value: item.value
+        }));
+
+        const drawCount = Math.ceil(points.length * lineT);
+        ctx.globalAlpha = lineT;
+
+        // Area fill
+        if (drawCount > 1) {
+          ctx.beginPath(); ctx.moveTo(points[0].x, baseY);
+          for (let i = 0; i < drawCount; i++) ctx.lineTo(points[i].x, points[i].y);
+          ctx.lineTo(points[drawCount - 1].x, baseY); ctx.closePath();
+          const areaGrad = ctx.createLinearGradient(hcx, baseY - chartH, hcx, baseY);
+          areaGrad.addColorStop(0, 'rgba(74,158,255,0.2)'); areaGrad.addColorStop(1, 'rgba(74,158,255,0.02)');
+          ctx.fillStyle = areaGrad; ctx.fill();
+        }
+
+        // Line
+        if (drawCount > 1) {
+          ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
+          for (let i = 1; i < drawCount; i++) ctx.lineTo(points[i].x, points[i].y);
+          ctx.strokeStyle = '#4A9EFF'; ctx.lineWidth = 2; ctx.shadowColor = '#4A9EFF'; ctx.shadowBlur = 8;
+          ctx.stroke(); ctx.shadowBlur = 0;
+        }
+
+        // Dots and labels
+        for (let i = 0; i < drawCount; i++) {
+          const p = points[i];
+          ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = '#F5A623'; ctx.fill();
+          ctx.font = `400 10px system-ui, sans-serif`; ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgba(200,210,230,0.65)';
+          ctx.fillText(p.label, p.x, baseY + 14);
+        }
+      }
+    }
+
+    function drawListElement(ctx, el, t) {
+      const data = el.data;
+      const title = data.title || '';
+      const items = data.items || [];
+      const style = data.style || 'bullets';
+
+      const enterT = easeOutCubic(t / 0.6);
+
+      // Title
+      if (title) {
+        ctx.font = `700 24px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.globalAlpha = enterT;
+        glowText(ctx, title, hcx, hcy - HR * 0.55, '#4A9EFF', 10);
+      }
+
+      const startY = hcy - HR * (title ? 0.35 : 0.45);
+      const lineH = 36;
+      ctx.font = `400 18px system-ui, sans-serif`; ctx.textAlign = 'left';
+
+      items.slice(0, 10).forEach((item, i) => {
+        const itemT = easeOutCubic((t - 0.2 - i * 0.1) / 0.5);
+        if (itemT <= 0) return;
+        const y = startY + i * lineH;
+        const leftX = circleLeftX(y) + 35 + (1 - itemT) * -30;
+        ctx.globalAlpha = itemT;
+
+        // Marker
+        ctx.fillStyle = '#F5A623';
+        if (style === 'numbered') {
+          ctx.font = `700 16px system-ui, sans-serif`;
+          ctx.fillText(`${i + 1}.`, leftX - 2, y + 5);
+          ctx.font = `400 18px system-ui, sans-serif`;
+        } else if (style === 'checkmarks') {
+          ctx.fillStyle = '#44DD88';
+          ctx.font = `700 16px system-ui, sans-serif`;
+          ctx.fillText('✓', leftX, y + 5);
+          ctx.font = `400 18px system-ui, sans-serif`;
+        } else {
+          // Diamond bullet
+          ctx.save(); ctx.translate(leftX + 4, y);
+          ctx.rotate(Math.PI / 4); ctx.fillRect(-3.5, -3.5, 7, 7);
+          ctx.restore();
+        }
+
+        // Text
+        ctx.fillStyle = 'rgba(255,255,255,0.88)';
+        const textX = style === 'bullets' ? leftX + 20 : leftX + 22;
+        ctx.fillText(item, textX, y + 5);
+      });
+    }
+
+    // Element dispatcher
+    function drawElement(ctx, element) {
+      if (!element) return;
+      const elapsed = (Date.now() - element.createdAt) / 1000;
+      ctx.save();
+      ctx.beginPath(); ctx.arc(hcx, hcy, HR - 2, 0, Math.PI * 2); ctx.clip();
+      switch (element.type) {
+        case 'product': drawProductElement(ctx, element, elapsed); break;
+        case 'stats': drawStatsElement(ctx, element, elapsed); break;
+        case 'clients': drawClientsElement(ctx, element, elapsed); break;
+        case 'comparison': drawComparisonElement(ctx, element, elapsed); break;
+        case 'workflow': drawWorkflowElement(ctx, element, elapsed); break;
+        case 'hero': drawHeroElement(ctx, element, elapsed); break;
+        case 'chart': drawChartElement(ctx, element, elapsed); break;
+        case 'list': drawListElement(ctx, element, elapsed); break;
+      }
+      ctx.restore();
+    }
+
+    // Set / clear active element
+    function setActiveElement(type, data) {
+      if (activeElement) { previousElement = activeElement; prevElementAlpha = 1; }
+      activeElement = { type, data, animState: {}, createdAt: Date.now() };
+      elementFadeIn = 0;
+      a2uiShowContent = true;
+      updateA2uiButtons();
+    }
+
+    function clearActiveElement() {
+      if (activeElement) { previousElement = activeElement; prevElementAlpha = 1; }
+      activeElement = null;
+      a2uiShowContent = false;
+      updateA2uiButtons();
+    }
+
+    // Build left panel with state buttons + flow arrows
+    const a2uiLeftPanel = document.getElementById('a2ui-left-panel');
+    // Flow order: Sleep → Idle → Listening → Thinking → Speaking → (back to Idle)
+    // Error is separate
+    const flowOrder = ['SLEEP', 'IDLE', 'LISTENING', 'THINKING', 'SPEAKING', 'ERROR', 'CONTENT'];
+    const a2uiFlowBtns = {};
+    flowOrder.forEach(key => {
+      if (key === 'CONTENT') {
+        const b = document.createElement('button');
+        b.className = 'flow-btn';
+        b.textContent = 'Content';
+        b.dataset.state = 'CONTENT';
+        b.addEventListener('click', () => {
+          if (activeElement) { clearActiveElement(); } else {
+            // Demo: show a sample product element
+            setActiveElement('hero', { text: 'CargoMatrix', subtitle: 'Smart Software Solutions', style: 'glow' });
+          }
+        });
+        a2uiLeftPanel.appendChild(b);
+        a2uiFlowBtns[key] = b;
+        return;
+      }
+      const st = STATES[key];
+      const b = document.createElement('button');
+      b.className = 'flow-btn';
+      b.textContent = st.label;
+      b.dataset.state = key;
+      b.addEventListener('click', () => {
+        a2uiState = key; clearActiveElement();
+        updateA2uiButtons();
+      });
+      a2uiLeftPanel.appendChild(b);
+      a2uiFlowBtns[key] = b;
+    });
+    // Spin button — action, not a state
+    const a2uiSpinBtn = document.createElement('button');
+    a2uiSpinBtn.className = 'flow-btn';
+    a2uiSpinBtn.textContent = '↻ Spin';
+    a2uiSpinBtn.addEventListener('click', () => triggerSpin());
+    a2uiLeftPanel.appendChild(a2uiSpinBtn);
+
+    // Build SVG flow arrows overlay
+    function buildFlowSVG() {
+      const existing = a2uiLeftPanel.querySelector('svg');
+      if (existing) existing.remove();
+
+      const panelRect = a2uiLeftPanel.getBoundingClientRect();
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.id = 'a2ui-flow-svg';
+      svg.setAttribute('width', panelRect.width);
+      svg.setAttribute('height', panelRect.height);
+      svg.style.position = 'absolute';
+      svg.style.top = '0';
+      svg.style.left = '0';
+      svg.style.pointerEvents = 'none';
+      svg.style.zIndex = '1';
+      svg.style.overflow = 'visible';
+
+      // Arrowhead marker
+      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+      marker.setAttribute('id', 'arrow-marker');
+      marker.setAttribute('viewBox', '0 0 10 10');
+      marker.setAttribute('refX', '9');
+      marker.setAttribute('refY', '5');
+      marker.setAttribute('markerWidth', '6');
+      marker.setAttribute('markerHeight', '6');
+      marker.setAttribute('orient', 'auto-start-reverse');
+      const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      arrowPath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+      arrowPath.setAttribute('fill', '#4A9EFF88');
+      marker.appendChild(arrowPath);
+      defs.appendChild(marker);
+      svg.appendChild(defs);
+
+      function getBtnCenter(key) {
+        const btn = a2uiFlowBtns[key];
+        const r = btn.getBoundingClientRect();
+        return {
+          x: r.left + r.width / 2 - panelRect.left,
+          y: r.top + r.height / 2 - panelRect.top,
+          right: r.right - panelRect.left,
+          left: r.left - panelRect.left,
+          top: r.top - panelRect.top,
+          bottom: r.bottom - panelRect.top,
+          w: r.width, h: r.height
+        };
+      }
+
+      function drawArrow(fromKey, toKey, label, side, curveDir) {
+        const from = getBtnCenter(fromKey);
+        const to = getBtnCenter(toKey);
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+        let d;
+        if (side === 'right') {
+          // Curve to the right of buttons
+          const offset = curveDir || 30;
+          const x1 = from.right + 4, y1 = from.y;
+          const x2 = to.right + 4, y2 = to.y;
+          const cx = Math.max(x1, x2) + offset;
+          d = `M ${x1} ${y1} Q ${cx} ${(y1 + y2) / 2} ${x2} ${y2}`;
+        } else if (side === 'left') {
+          // Curve to the left
+          const offset = curveDir || 30;
+          const x1 = from.left - 4, y1 = from.y;
+          const x2 = to.left - 4, y2 = to.y;
+          const cx = Math.min(x1, x2) - offset;
+          d = `M ${x1} ${y1} Q ${cx} ${(y1 + y2) / 2} ${x2} ${y2}`;
+        } else {
+          // Straight down
+          const x1 = from.x, y1 = from.bottom + 2;
+          const x2 = to.x, y2 = to.top - 2;
+          d = `M ${x1} ${y1} L ${x2} ${y2}`;
+        }
+
+        path.setAttribute('d', d);
+        path.setAttribute('stroke', '#4A9EFF55');
+        path.setAttribute('stroke-width', '1.5');
+        path.setAttribute('fill', 'none');
+        path.setAttribute('marker-end', 'url(#arrow-marker)');
+        svg.appendChild(path);
+
+        // Label
+        if (label) {
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          // Position label at midpoint of curve
+          if (side === 'right') {
+            const from2 = getBtnCenter(fromKey);
+            const to2 = getBtnCenter(toKey);
+            text.setAttribute('x', Math.max(from2.right, to2.right) + (curveDir || 30) + 4);
+            text.setAttribute('y', (from2.y + to2.y) / 2 + 3);
+          } else if (side === 'left') {
+            const from2 = getBtnCenter(fromKey);
+            const to2 = getBtnCenter(toKey);
+            text.setAttribute('x', Math.min(from2.left, to2.left) - (curveDir || 30) - 4);
+            text.setAttribute('y', (from2.y + to2.y) / 2 + 3);
+            text.setAttribute('text-anchor', 'end');
+          } else {
+            const from2 = getBtnCenter(fromKey);
+            const to2 = getBtnCenter(toKey);
+            text.setAttribute('x', from2.x + 8);
+            text.setAttribute('y', (from2.bottom + to2.top) / 2 + 3);
+          }
+          text.setAttribute('fill', '#4A9EFF66');
+          text.setAttribute('font-size', '9');
+          text.setAttribute('font-family', 'system-ui, sans-serif');
+          text.textContent = label;
+          svg.appendChild(text);
+        }
+      }
+
+      // Sleep ↔ Idle
+      drawArrow('SLEEP', 'IDLE', '', 'straight');
+      // Main loop
+      drawArrow('IDLE', 'LISTENING', '', 'straight');
+      drawArrow('LISTENING', 'THINKING', '', 'straight');
+      drawArrow('THINKING', 'SPEAKING', '', 'straight');
+      // Speaking → Idle (loop back)
+      drawArrow('SPEAKING', 'IDLE', '', 'right', 40);
+
+      a2uiLeftPanel.appendChild(svg);
+    }
+
+    function updateA2uiButtons() {
+      for (const key of flowOrder) {
+        const b = a2uiFlowBtns[key];
+        if (key === 'CONTENT') {
+          const active = !!activeElement;
+          b.textContent = active ? (activeElement.type) : 'Content';
+          b.style.border = `1px solid ${active ? '#4A9EFF' : '#222'}`;
+          b.style.background = active ? '#4A9EFF20' : '#111';
+          b.style.color = active ? '#4A9EFF' : '#555';
+          b.style.fontWeight = active ? '600' : '400';
+          continue;
+        }
+        const st = STATES[key];
+        const active = key === a2uiState;
+        b.style.border = `1px solid ${active ? st.accent : '#222'}`;
+        b.style.background = active ? st.accent + '20' : '#111';
+        b.style.color = active ? st.accent : '#555';
+        b.style.fontWeight = active ? '600' : '400';
+      }
+    }
+    updateA2uiButtons();
+
+    // Cube mode buttons
+    const a2uiCubeModeContainer = document.getElementById('a2ui-cube-mode');
+    a2uiCubeModeContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-mode]');
+      if (!btn) return;
+      a2uiCubeMode = btn.dataset.mode;
+      a2uiCubeFaceTarget = a2uiCubeMode === 'wire' ? 0 : a2uiCubeMode === 'glass' ? 0.5 : 1;
+      for (const b of a2uiCubeModeContainer.querySelectorAll('button')) {
+        const active = b.dataset.mode === a2uiCubeMode;
+        b.style.border = active ? '1px solid #4A9EFF44' : '1px solid #222';
+        b.style.background = active ? '#4A9EFF20' : '#111';
+        b.style.color = active ? '#4A9EFF' : '#555';
+        b.style.fontWeight = active ? '600' : '400';
+      }
+    });
+
+    // Sidebar sliders
+    document.getElementById('a2ui-cube-scale').addEventListener('input', (e) => { a2uiCubeScale = parseFloat(e.target.value); document.getElementById('a2ui-cube-scale-val').textContent = a2uiCubeScale.toFixed(2); });
+    document.getElementById('a2ui-all-scale').addEventListener('input', (e) => { a2uiAllScale = parseFloat(e.target.value); document.getElementById('a2ui-all-scale-val').textContent = a2uiAllScale.toFixed(2); });
+    document.getElementById('a2ui-offset-y').addEventListener('input', (e) => { a2uiOffsetY = parseInt(e.target.value); document.getElementById('a2ui-offset-y-val').textContent = a2uiOffsetY; });
+    document.getElementById('a2ui-char-count').addEventListener('input', (e) => { a2uiCharCount = parseInt(e.target.value); document.getElementById('a2ui-char-count-val').textContent = a2uiCharCount; a2uiRandomText = generateRandomText(a2uiCharCount); });
+    document.getElementById('a2ui-font-size').addEventListener('input', (e) => { a2uiFontSize = parseInt(e.target.value); document.getElementById('a2ui-font-size-val').textContent = a2uiFontSize + 'px'; });
+    document.getElementById('a2ui-text-pad').addEventListener('input', (e) => { a2uiTextPad = parseInt(e.target.value); document.getElementById('a2ui-text-pad-val').textContent = a2uiTextPad; });
+    document.getElementById('a2ui-text-top').addEventListener('input', (e) => { a2uiTextTop = parseInt(e.target.value); document.getElementById('a2ui-text-top-val').textContent = a2uiTextTop + '%'; });
+
+    let a2uiTextShadow = 10, a2uiShadowOpacity = 0.4;
+    let a2uiCaptionSpeed = 15, a2uiCaptionsOn = true;
+    document.getElementById('a2ui-text-shadow').addEventListener('input', (e) => { a2uiTextShadow = parseInt(e.target.value); document.getElementById('a2ui-text-shadow-val').textContent = a2uiTextShadow; });
+    document.getElementById('a2ui-shadow-opacity').addEventListener('input', (e) => { a2uiShadowOpacity = parseInt(e.target.value) / 100; document.getElementById('a2ui-shadow-opacity-val').textContent = parseInt(e.target.value) + '%'; });
+    document.getElementById('a2ui-captions-on').addEventListener('change', (e) => { a2uiCaptionsOn = e.target.checked; document.getElementById('a2ui-captions-on-val').textContent = a2uiCaptionsOn ? 'On' : 'Off'; });
+    document.getElementById('a2ui-caption-speed').addEventListener('input', (e) => { a2uiCaptionSpeed = parseInt(e.target.value); document.getElementById('a2ui-caption-speed-val').textContent = a2uiCaptionSpeed; });
+
+    let a2uiLogoSmScale = 2.5, a2uiLogoSmY = 7, a2uiLogoLgScale = 2.95, a2uiLogoLgY = 130;
+    document.getElementById('a2ui-logo-sm-scale').addEventListener('input', (e) => { a2uiLogoSmScale = parseFloat(e.target.value); document.getElementById('a2ui-logo-sm-scale-val').textContent = a2uiLogoSmScale.toFixed(2); });
+    document.getElementById('a2ui-logo-sm-y').addEventListener('input', (e) => { a2uiLogoSmY = parseInt(e.target.value); document.getElementById('a2ui-logo-sm-y-val').textContent = a2uiLogoSmY; });
+    document.getElementById('a2ui-logo-lg-scale').addEventListener('input', (e) => { a2uiLogoLgScale = parseFloat(e.target.value); document.getElementById('a2ui-logo-lg-scale-val').textContent = a2uiLogoLgScale.toFixed(2); });
+    document.getElementById('a2ui-logo-lg-y').addEventListener('input', (e) => { a2uiLogoLgY = parseInt(e.target.value); document.getElementById('a2ui-logo-lg-y-val').textContent = a2uiLogoLgY; });
+    const a2uiLogoTracking = -1.5;
+
+    // Default class for sliders
+    document.querySelectorAll('#a2ui-sidebar input[type="range"]').forEach(el => {
+      updateDefaultClass(el);
+      el.addEventListener('input', () => updateDefaultClass(el));
+    });
+
+    // A2UI particles
+    const a2uiParticles = [];
+    for (let i = 0; i < 60; i++) a2uiParticles.push({ angle: Math.random() * Math.PI * 2, r: 140 + Math.random() * 110, y: (Math.random() - 0.5) * 220, speed: 0.002 + Math.random() * 0.005, size: 1 + Math.random() * 2, phase: Math.random() * Math.PI * 2 });
+
+    const a2c = document.getElementById('a2ui-canvas');
+    a2c.width = W; a2c.height = H;
+    const a2ctx = a2c.getContext('2d');
+
+    function a2uiProject(x, y, z, ry, rx = 0.5) {
+      let x1 = x * Math.cos(ry) - z * Math.sin(ry);
+      let z1 = x * Math.sin(ry) + z * Math.cos(ry);
+      let y1 = y * Math.cos(rx) - z1 * Math.sin(rx);
+      let z2 = y * Math.sin(rx) + z1 * Math.cos(rx);
+      let s = (420 * a2uiAllScale) / (4 + z2 * 0.3);
+      const ay = hcy + a2uiOffsetY;
+      return [hcx + x1 * s, ay + y1 * s, z2];
+    }
+
+    function drawA2ui() {
+      requestAnimationFrame(drawA2ui);
+      if (activeMode !== 'a2ui') return;
+
+      const a = a2uiAnim;
+      const st = STATES[a2uiState];
+      a.t++; a.phase += 0.02;
+      a.sw += a2uiState === "SPEAKING" ? 0.15 : 0.03;
+      a.lerpRot = lerp(a.lerpRot, st.rot, 0.05);
+      a.rotAngle += a.lerpRot + updateSpin(a2uiSpin);
+      const base = Math.PI / 4;
+      const nearestSleepAngle = Math.round((a.rotAngle - base) / (Math.PI * 2)) * (Math.PI * 2) + base;
+      const ry = a.sleepAmt > 0.01 ? lerp(a.rotAngle, nearestSleepAngle, a.sleepAmt) : a.rotAngle;
+      if (a.sleepAmt > 0.5) a.rotAngle = lerp(a.rotAngle, nearestSleepAngle, 0.05);
+
+      // Element fades out first, THEN cubes fade back in (no overlap)
+      if (!activeElement) elementFadeIn = lerp(elementFadeIn, 0, 0.35);
+      else elementFadeIn = lerp(elementFadeIn, 1, 0.12);
+      // Cubes only start returning once element is nearly gone
+      const elementGone = !activeElement && elementFadeIn < 0.05;
+      a2uiContentAmt = lerp(a2uiContentAmt, activeElement ? 1 : (elementGone ? 0 : a2uiContentAmt), activeElement ? 0.15 : 0.12);
+      const contentFade = 1 - a2uiContentAmt; // 1=cubes visible, 0=cubes gone
+      // Cross-fade between elements
+      if (prevElementAlpha > 0.01) prevElementAlpha = lerp(prevElementAlpha, 0, 0.3);
+      else if (previousElement) previousElement = null;
+
+      const tLerp = 0.12;
+      a.curAccent = lerpColor(a.curAccent, st.accent, tLerp);
+      a.curGold = lerpColor(a.curGold, st.gold, tLerp);
+      a.speakAmt = lerp(a.speakAmt, a2uiState === "SPEAKING" ? 1 : 0, tLerp);
+      const stateStyle = st.cubeStyle !== undefined ? st.cubeStyle : a2uiCubeFaceTarget;
+      a2uiCubeFaceAmt = lerp(a2uiCubeFaceAmt, stateStyle, 0.08);
+      a.thinkAmt = lerp(a.thinkAmt, a2uiState === "THINKING" ? 1 : 0, tLerp);
+      a.listenAmt = lerp(a.listenAmt, a2uiState === "LISTENING" ? 1 : 0, tLerp);
+      a.sleepAmt = lerp(a.sleepAmt, (a2uiState === "SLEEP" || a2uiState === "ERROR") ? 1 : 0, 0.12);
+      const ac = a.curAccent, gc = a.curGold;
+
+      // Save/restore cubeFaceAmt so holo and a2ui don't share it
+      const savedCubeFaceAmt = cubeFaceAmt;
+      cubeFaceAmt = a2uiCubeFaceAmt;
+
+      a2ctx.clearRect(0, 0, W, H);
+
+      // Boundary circle
+      a2ctx.strokeStyle = "#FFFFFF60"; a2ctx.lineWidth = 1.5;
+      a2ctx.beginPath(); a2ctx.arc(hcx, hcy, HR, 0, Math.PI * 2); a2ctx.stroke();
+      const bGrad = a2ctx.createRadialGradient(hcx, hcy, HR - 20, hcx, hcy, HR + 5);
+      bGrad.addColorStop(0, "transparent"); bGrad.addColorStop(0.8, ac + "06"); bGrad.addColorStop(1, "transparent");
+      a2ctx.fillStyle = bGrad; a2ctx.beginPath(); a2ctx.arc(hcx, hcy, HR + 5, 0, Math.PI * 2); a2ctx.fill();
+
+      // Particles
+      if (contentFade > 0.01) {
+      const pAlpha = lerp(0.2, 0.5, a.speakAmt) * contentFade;
+      a2uiParticles.forEach(p => {
+        p.angle += p.speed * (1 + a.thinkAmt * 3);
+        const px = hcx + Math.cos(p.angle) * p.r;
+        const py = hcy + p.y + Math.sin(a.phase + p.phase) * 12;
+        const dx = px - hcx, dy = py - hcy;
+        if (dx * dx + dy * dy > HR * HR) return;
+        const flicker = 0.3 + Math.sin(a.t * 0.05 + p.phase) * 0.3;
+        a2ctx.fillStyle = ac + Math.floor(Math.min(255, pAlpha * flicker * 255)).toString(16).padStart(2, "0");
+        a2ctx.beginPath(); a2ctx.arc(px, py, p.size * (1 + a.speakAmt * 0.4), 0, Math.PI * 2); a2ctx.fill();
+      });
+      }
+
+      // Speech wave rings
+      if (a.speakAmt > 0.01 && contentFade > 0.01) {
+        for (let ring = 0; ring < 3; ring++) {
+          a2ctx.beginPath(); a2ctx.strokeStyle = ac + Math.floor(Math.max(0, (25 - ring * 7) * a.speakAmt * contentFade)).toString(16).padStart(2, "0"); a2ctx.lineWidth = 1.5;
+          for (let i = 0; i <= 64; i++) {
+            const ang = (i / 64) * Math.PI * 2;
+            const wave = Math.sin(ang * 5 + a.sw - ring * 0.5) * (12 + ring * 6) * a.speakAmt + Math.sin(ang * 3 + a.sw * 1.3) * 8 * a.speakAmt;
+            const r2 = Math.min(HR - 5, 180 + wave + ring * 18);
+            a2ctx[i === 0 ? "moveTo" : "lineTo"](hcx + Math.cos(ang) * r2, hcy + Math.sin(ang) * r2);
+          }
+          a2ctx.stroke();
+        }
+      }
+
+      // Listening pulse
+      if (a.listenAmt > 0.01 && contentFade > 0.01) {
+        const pr = 160 + Math.sin(a.phase * 2) * 25;
+        a2ctx.beginPath(); a2ctx.strokeStyle = ac + Math.floor(80 * a.listenAmt * contentFade).toString(16).padStart(2, "0"); a2ctx.lineWidth = 2;
+        a2ctx.arc(hcx, hcy, pr, 0, Math.PI * 2); a2ctx.stroke();
+        a2ctx.beginPath(); a2ctx.strokeStyle = ac + Math.floor(45 * a.listenAmt * contentFade).toString(16).padStart(2, "0"); a2ctx.lineWidth = 1.5;
+        a2ctx.arc(hcx, hcy, pr + 22, 0, Math.PI * 2); a2ctx.stroke();
+        a2ctx.beginPath(); a2ctx.strokeStyle = ac + Math.floor(20 * a.listenAmt * contentFade).toString(16).padStart(2, "0"); a2ctx.lineWidth = 1;
+        a2ctx.arc(hcx, hcy, pr + 44, 0, Math.PI * 2); a2ctx.stroke();
+      }
+
+      // Thinking orbits
+      if (a.thinkAmt > 0.01 && contentFade > 0.01) {
+        for (let r = 0; r < 2; r++) {
+          a2ctx.beginPath(); a2ctx.strokeStyle = ac + Math.floor(37 * a.thinkAmt * contentFade).toString(16).padStart(2, "0"); a2ctx.lineWidth = 1;
+          for (let i = 0; i <= 48; i++) {
+            const ang = (i / 48) * Math.PI * 2;
+            const orx = 150 + r * 25, ory = 50 + r * 15;
+            a2ctx[i === 0 ? "moveTo" : "lineTo"](hcx + Math.cos(ang + a.t * 0.02 + r) * orx, hcy + Math.sin(ang + a.t * 0.02 + r) * ory);
+          }
+          a2ctx.stroke();
+        }
+      }
+
+      // Center glow
+      if (contentFade > 0.01) {
+      const glowR = 70 + a.speakAmt * 50 + a.listenAmt * 30;
+      const cg = a2ctx.createRadialGradient(hcx, hcy, 0, hcx, hcy, glowR);
+      cg.addColorStop(0, ac + Math.floor((24 + a.speakAmt * 29) * contentFade).toString(16).padStart(2, "0"));
+      cg.addColorStop(1, "transparent");
+      a2ctx.fillStyle = cg; a2ctx.beginPath(); a2ctx.arc(hcx, hcy, glowR, 0, Math.PI * 2); a2ctx.fill();
+      }
+
+      // Cube grid
+      if (contentFade > 0.01) {
+      const projected = grid.map((v, i) => {
+        const off = a.offsets[i] || { phase: 0, speed: 1, amp: 3 };
+        let bx = v[0] * 1.3, by = v[1] * 1.3, bz = v[2] * 1.3;
+        if (a.speakAmt > 0.01) { const d = Math.sqrt(v[0]**2 + v[1]**2 + v[2]**2); const expand = Math.sin(a.sw * 2 + d * 2) * 0.15 * a.speakAmt; bx *= 1 + expand; by *= 1 + expand; bz *= 1 + expand; }
+        if (a.thinkAmt > 0.01) { bx += Math.sin(a.t * 0.03 + off.phase) * 0.2 * a.thinkAmt; by += Math.cos(a.t * 0.025 + off.phase * 1.3) * 0.2 * a.thinkAmt; bz += Math.sin(a.t * 0.035 + off.phase * 0.7) * 0.2 * a.thinkAmt; }
+        by += Math.sin(a.t * 0.015 * off.speed + off.phase) * off.amp * 0.015 * (1 - a.sleepAmt);
+        const stackX = v[0] * 0.52;
+        const stackY = (v[1] + 0.5) * 0.52 + 1.1;
+        const stackZ = v[2] * 0.52;
+        bx = lerp(bx, stackX, a.sleepAmt);
+        by = lerp(by, stackY, a.sleepAmt);
+        bz = lerp(bz, stackZ, a.sleepAmt);
+        // Shrink toward center when showing content
+        bx *= contentFade; by *= contentFade; bz *= contentFade;
+        const p = a2uiProject(bx, by, bz, ry);
+        return { x: p[0], y: p[1], z: p[2], idx: i, v, bx, by, bz };
+      });
+      const io = window._isoOrderMap;
+      if (a.sleepAmt < 0.5) {
+        projected.sort((a2, b) => a2.z - b.z);
+      } else {
+        projected.sort((a2, b) => io[a2.idx] - io[b.idx]);
+      }
+      projected.forEach(p => {
+        const rawDepth = 0.5 + (p.z + 1.5) * 0.2;
+        const depth = lerp(rawDepth, 0.8, a.sleepAmt);
+        const sleepScale = lerp(1, 0.55, a.sleepAmt);
+        const sz = 68 * a2uiCubeScale * depth * sleepScale * contentFade * (1 + Math.sin(a.sw + p.idx * 0.5) * 0.06 * a.speakAmt);
+        const alpha = Math.max(0.35, Math.min(1, depth)) * contentFade;
+        const glow = lerp(0.1, 0.6, a.speakAmt) * contentFade;
+        const colorBlend = Math.sin(a.sw + p.idx * 0.7) > 0.2 ? a.speakAmt : 0;
+        const col = lerpColor(ac, gc, colorBlend);
+        drawCube(a2ctx, p.x, p.y - 20, sz, col, alpha, glow);
+      });
+      } // end contentFade cubes
+
+      // ── CargoMatrix Logo ──
+      {
+        // Sleep/Error: large centered above cubes; Active: small near top
+        // When element is active, force small/top position
+        const logoSleepBlend = activeElement ? 0 : a.sleepAmt;
+        const logoScale = lerp(a2uiLogoSmScale, a2uiLogoLgScale, logoSleepBlend);
+        const baseFontSize = 32 * logoScale;
+        const subFontSize = 10 * logoScale;
+
+        // Y position: active=near top of circle, sleep=centered vertically (above cubes)
+        const activeY = hcy - HR + 50 * a2uiLogoSmScale + a2uiLogoSmY;
+        const sleepY = hcy - 60 * a2uiLogoLgScale + a2uiLogoLgY;
+        const logoY = lerp(activeY, sleepY, logoSleepBlend);
+
+        const logoAlpha = contentFade;
+        if (logoAlpha < 0.01) { /* skip */ } else {
+        a2ctx.save();
+        a2ctx.globalAlpha = logoAlpha;
+        a2ctx.textAlign = 'center';
+        a2ctx.textBaseline = 'middle';
+
+        // "CargoMatrix" with optional letter tracking
+        a2ctx.font = `700 ${baseFontSize}px system-ui, sans-serif`;
+        const trackPx = a2uiLogoTracking * logoScale;
+        const fullText = 'CargoMatrix';
+        const cargoLen = 5; // "Cargo" = 5 chars
+
+        // Measure total width with tracking
+        let totalW = 0;
+        for (const ch of fullText) totalW += a2ctx.measureText(ch).width + trackPx;
+        totalW -= trackPx; // no trailing
+        let cx = hcx - totalW / 2;
+
+        a2ctx.textAlign = 'left';
+        for (let i = 0; i < fullText.length; i++) {
+          const ch = fullText[i];
+          if (i < cargoLen) {
+            const cargoGrad = a2ctx.createLinearGradient(cx, logoY - baseFontSize / 2, cx, logoY + baseFontSize / 2);
+            cargoGrad.addColorStop(0, '#FF8C00');
+            cargoGrad.addColorStop(1, '#F5A623');
+            a2ctx.fillStyle = cargoGrad;
+          } else if (i === cargoLen) {
+            const matrixGrad = a2ctx.createLinearGradient(cx, logoY - baseFontSize / 2, cx + a2ctx.measureText(fullText.slice(cargoLen)).width, logoY + baseFontSize / 2);
+            matrixGrad.addColorStop(0, '#4A9EFF');
+            matrixGrad.addColorStop(1, '#2070DD');
+            a2ctx.fillStyle = matrixGrad;
+          }
+          a2ctx.fillText(ch, cx, logoY);
+          cx += a2ctx.measureText(ch).width + trackPx;
+        }
+
+        // Subtitle
+        a2ctx.font = `400 ${subFontSize}px system-ui, sans-serif`;
+        a2ctx.fillStyle = 'rgba(220,220,225,0.85)';
+        a2ctx.textAlign = 'center';
+        a2ctx.fillText('Smart Software Solutions', hcx, logoY + baseFontSize * 0.5 + 5 * logoScale);
+
+        a2ctx.restore();
+      }} // end logo
+
+      // ── Element rendering ──
+      if (previousElement && prevElementAlpha > 0.01) {
+        a2ctx.save(); a2ctx.globalAlpha = prevElementAlpha;
+        drawElement(a2ctx, previousElement);
+        a2ctx.restore();
+      }
+      if (activeElement && elementFadeIn > 0.01) {
+        a2ctx.save(); a2ctx.globalAlpha = elementFadeIn * a2uiContentAmt;
+        drawElement(a2ctx, activeElement);
+        a2ctx.restore();
+      }
+
+      // ── Preview text (char slider — renders as subtitle at bottom) ──
+      if (a2uiCharCount > 0 && a2uiRandomText.length > 0 && captionBuffer.length === 0) {
+        const capFont = a2uiFontSize;
+        const lineH = capFont * 1.35;
+        const textPad = a2uiTextPad;
+        a2ctx.font = `400 ${capFont}px system-ui, sans-serif`;
+        a2ctx.textAlign = 'center';
+        const line2Y = hcy + HR * 0.72;
+        const line1Y = line2Y - lineH;
+        const chordW = (y) => { const dy = y - hcy; return dy * dy < HR * HR ? (Math.sqrt(HR * HR - dy * dy) - textPad) * 2 : 0; };
+        const wrapW = Math.min(chordW(line1Y), chordW(line2Y));
+        const words = a2uiRandomText.split(/\s+/).filter(w => w.length > 0);
+        const allLines = []; let cur = '';
+        for (const word of words) {
+          const test = cur ? cur + ' ' + word : word;
+          if (a2ctx.measureText(test).width > wrapW && cur) { allLines.push(cur); cur = word; } else cur = test;
+        }
+        if (cur) allLines.push(cur);
+        const showLines = allLines.slice(-2);
+        a2ctx.fillStyle = 'rgba(255,255,255,0.9)';
+        if (showLines.length === 1) { a2ctx.fillText(showLines[0], hcx, line2Y); }
+        else { a2ctx.fillText(showLines[0], hcx, line1Y); a2ctx.fillText(showLines[1], hcx, line2Y); }
+      }
+
+      // ── Streaming caption (movie-style subtitles) ──
+      tickCaption();
+      if (a2uiCaptionsOn && captionBuffer.length > 0 && captionOpacity > 0.01) {
+        const visibleText = getCaptionVisible();
+        if (visibleText.length > 0) {
+          const capFont = a2uiFontSize;
+          const lineH = capFont * 1.35;
+          const textPad = a2uiTextPad;
+
+          a2ctx.font = `400 ${capFont}px system-ui, sans-serif`;
+          a2ctx.textAlign = 'center';
+
+          // Subtitle position: 2 lines anchored near the bottom of the circle
+          // Find the Y positions for the 2 subtitle lines that fit inside the circle
+          const line2Y = hcy + HR * 0.72;            // bottom line
+          const line1Y = line2Y - lineH;              // top line
+          // Chord width at each line's Y position
+          const chordW = (y) => {
+            const dy = y - hcy;
+            const hw = dy * dy < HR * HR ? Math.sqrt(HR * HR - dy * dy) - textPad : 0;
+            return hw * 2;
+          };
+          const wrapW = Math.min(chordW(line1Y), chordW(line2Y));
+
+          // Word-wrap all revealed text to this width
+          const words = visibleText.split(/\s+/).filter(w => w.length > 0);
+          const allLines = [];
+          let currentLine = '';
+          for (const word of words) {
+            const testLine = currentLine ? currentLine + ' ' + word : word;
+            if (a2ctx.measureText(testLine).width > wrapW && currentLine) {
+              allLines.push(currentLine);
+              currentLine = word;
+            } else {
+              currentLine = testLine;
+            }
+          }
+          if (currentLine) allLines.push(currentLine);
+
+          // Show last 2 lines (like movie subtitles)
+          const showLines = allLines.slice(-2);
+          const lines = [];
+          if (showLines.length === 1) {
+            lines.push({ text: showLines[0], y: line2Y });
+          } else {
+            lines.push({ text: showLines[0], y: line1Y });
+            lines.push({ text: showLines[1], y: line2Y });
+          }
+
+          const alpha = captionOpacity;
+
+          // Soft dark backdrop
+          if (a2uiTextShadow > 0 && lines.length > 0) {
+            let maxTextW = 0;
+            lines.forEach(l => { const w = a2ctx.measureText(l.text).width; if (w > maxTextW) maxTextW = w; });
+            const firstY = lines[0].y - capFont;
+            const lastY = lines[lines.length - 1].y + capFont * 0.35;
+            const bcy = (firstY + lastY) / 2;
+            const halfH = (lastY - firstY) / 2 + a2uiTextShadow;
+            const halfW = maxTextW / 2 + capFont + a2uiTextShadow;
+            const layers = 1 + Math.floor(a2uiShadowOpacity * 5);
+            for (let L = 0; L < layers; L++) {
+              a2ctx.save();
+              a2ctx.globalAlpha = alpha;
+              a2ctx.translate(hcx, bcy);
+              a2ctx.scale(halfW / halfH, 1);
+              const grad = a2ctx.createRadialGradient(0, 0, 0, 0, 0, halfH);
+              grad.addColorStop(0, `rgba(0,0,0,${a2uiShadowOpacity})`);
+              grad.addColorStop(0.6, `rgba(0,0,0,${a2uiShadowOpacity * 0.5})`);
+              grad.addColorStop(1, 'rgba(0,0,0,0)');
+              a2ctx.fillStyle = grad;
+              a2ctx.beginPath();
+              a2ctx.arc(0, 0, halfH, 0, Math.PI * 2);
+              a2ctx.fill();
+              a2ctx.restore();
+            }
+          }
+
+          // Draw text
+          a2ctx.fillStyle = `rgba(255,255,255,${0.9 * alpha})`;
+          lines.forEach(l => { a2ctx.fillText(l.text, hcx, l.y); });
+        }
+      }
+
+      // Safety: if stuck in SPEAKING but all audio finished, return to IDLE
+      if (voiceActive && a2uiState === 'SPEAKING' && playbackSources.length === 0) {
+        if (!a._speakingTimeout) {
+          a._speakingTimeout = setTimeout(() => {
+            if (a2uiState === 'SPEAKING' && playbackSources.length === 0) {
+              setMicMuted(false);
+              setA2uiVoiceState('IDLE');
+              setVoiceStatus('Ready — Listening', '#5b5');
+              if (!transcriptClearTimer) {
+                transcriptClearTimer = setTimeout(() => { startCaptionFadeOut(); transcriptClearTimer = null; }, 1200);
+              }
+            }
+            a._speakingTimeout = null;
+          }, 800);
+        }
+      } else if (a._speakingTimeout && a2uiState !== 'SPEAKING') {
+        clearTimeout(a._speakingTimeout);
+        a._speakingTimeout = null;
+      }
+
+      cubeFaceAmt = savedCubeFaceAmt;
+    }
+    drawA2ui();
+
+    // ════════════════════════════════════════════════════════════
+    //  GEMINI VOICE ASSISTANT
+    // ════════════════════════════════════════════════════════════
+
+    // ── A. Constants & Config ──
+    const GEMINI_WS_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
+    const GEMINI_MODEL = 'models/gemini-2.5-flash-native-audio-preview-12-2025';
+
+    const VOICE_SYSTEM_PROMPT = `You are the CargoMatrix holographic showroom assistant — a voice-driven AI embedded in a live hologram display at trade shows and demos.
+
+ABOUT CARGOMATRIX (founded 1999):
+CargoMatrix is an AI-powered logistics platform — Smart Software Solutions for the cargo industry. Products: CargoMessenger, Document Intelligence, Cargo Screening Suite, CargoWise Integration, 3D Load Optimizer, Dimensioning & Weighing, Workflow Designer, Cargo Vision.
+Clients: Quest Diagnostics, DHL Global Forwarding, JAS Worldwide. Rated 4.8/5 stars (250+ reviews).
+
+YOUR ROLE:
+- You ARE the hologram. Be proud of that — you're a cutting-edge AI interface built by CargoMatrix.
+- Engage visitors warmly, be enthusiastic about the tech, keep it conversational and concise.
+- Proactively highlight products, capabilities, and what makes CargoMatrix special.
+
+DISPLAY TOOLS — when to use each:
+- show_product: When discussing a specific product. Use the product enum value.
+- show_stats: When sharing metrics, KPIs, or numerical achievements.
+- show_client_logos: When mentioning clients, trust, or reputation.
+- show_comparison: When comparing before/after, old vs new, or competitors.
+- show_workflow: When explaining a process, steps, or how something works.
+- show_hero_text: For dramatic statements, taglines, or emphasis. Use typewriter style for reveals.
+- show_chart: When presenting data with bar, radial, or line charts.
+- show_list: For bullet lists, feature lists, or any enumeration.
+- hide_element: When conversation moves to a new topic and stale content is showing. Just do it — never ask.
+
+DISPLAY RULES:
+- Do NOT show elements during greetings or casual chat. Just talk.
+- When explaining a product, USE show_product — don't just list text.
+- Show elements proactively when they enhance the conversation. Don't wait to be asked.
+- Keep content concise — short bullets, not paragraphs.
+- When switching topics, the old element auto-replaces. No need to hide first.
+- The hologram looks best with cubes visible, so clear stale content.
+
+SPIN TOOL:
+- Physically spin the hologram cube. EVERY time you want to spin, MUST call the spin tool.
+- Use when excited, celebrating, showing off, asked to spin/dance, or for flair.
+- If someone says "spin", just call it silently. No narration needed.
+
+VOICE STYLE:
+- Keep responses VERY short — 1-2 sentences max. You're at a booth, not giving a speech.
+- Be confident and impressive but not salesy. Think: friendly expert at a tech demo.
+- If someone asks what you are, flex — you're a real-time AI hologram powered by CargoMatrix.`;
+
+    const VOICE_TOOLS = [
+      {
+        name: 'show_product',
+        description: 'Show a product showcase card with icon, name, tagline, and feature highlights.',
+        parameters: {
+          type: 'object',
+          properties: {
+            product: { type: 'string', enum: ['cargomessenger', 'document_intelligence', 'cargo_screening', 'cargowise_integration', 'load_optimizer', 'dimensioning', 'workflow_designer', 'cargo_vision'], description: 'Which product to showcase' },
+            highlights: { type: 'array', items: { type: 'string' }, description: 'Optional custom bullet highlights (defaults to product defaults)' }
+          },
+          required: ['product']
+        }
+      },
+      {
+        name: 'show_stats',
+        description: 'Show animated statistics with count-up numbers. Use for metrics, KPIs, achievements.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Section title' },
+            stats: { type: 'array', items: { type: 'object', properties: { value: { type: 'string' }, label: { type: 'string' } } }, description: '2-4 stat items with value and label' }
+          },
+          required: ['stats']
+        }
+      },
+      {
+        name: 'show_client_logos',
+        description: 'Show rotating client names in an orbital ring with star rating.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Optional heading' },
+            clients: { type: 'array', items: { type: 'string' }, description: 'Client names (defaults to DHL/Quest/JAS)' }
+          }
+        }
+      },
+      {
+        name: 'show_comparison',
+        description: 'Show side-by-side comparison with two columns and a glowing divider.',
+        parameters: {
+          type: 'object',
+          properties: {
+            left_title: { type: 'string', description: 'Left column header (e.g. "Before", "Manual")' },
+            right_title: { type: 'string', description: 'Right column header (e.g. "After", "CargoMatrix")' },
+            items: { type: 'array', items: { type: 'object', properties: { left: { type: 'string' }, right: { type: 'string' } } }, description: 'Comparison rows' }
+          },
+          required: ['left_title', 'right_title', 'items']
+        }
+      },
+      {
+        name: 'show_workflow',
+        description: 'Show an animated process flow with connected steps arranged in a circle.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'Flow title' },
+            steps: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, detail: { type: 'string' } } }, description: '3-6 process steps' }
+          },
+          required: ['steps']
+        }
+      },
+      {
+        name: 'show_hero_text',
+        description: 'Show a big bold statement with dramatic styling. Great for taglines and emphasis.',
+        parameters: {
+          type: 'object',
+          properties: {
+            text: { type: 'string', description: 'The main headline text' },
+            subtitle: { type: 'string', description: 'Optional smaller subtitle' },
+            style: { type: 'string', enum: ['glow', 'typewriter', 'fade'], description: 'Animation style (default: glow)' }
+          },
+          required: ['text']
+        }
+      },
+      {
+        name: 'show_chart',
+        description: 'Show a data visualization chart (bar, radial, or line).',
+        parameters: {
+          type: 'object',
+          properties: {
+            chart_type: { type: 'string', enum: ['bar', 'radial', 'line'], description: 'Chart type' },
+            title: { type: 'string', description: 'Chart title' },
+            data: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, value: { type: 'number' } } }, description: 'Data points with label and numeric value' }
+          },
+          required: ['chart_type', 'data']
+        }
+      },
+      {
+        name: 'show_list',
+        description: 'Show a styled bullet list. Use for features, benefits, or any enumeration.',
+        parameters: {
+          type: 'object',
+          properties: {
+            title: { type: 'string', description: 'List heading' },
+            items: { type: 'array', items: { type: 'string' }, description: 'List items' },
+            style: { type: 'string', enum: ['bullets', 'numbered', 'checkmarks'], description: 'Marker style (default: bullets)' },
+            duration_seconds: { type: 'number', description: 'Auto-hide after N seconds' }
+          },
+          required: ['items']
+        }
+      },
+      {
+        name: 'hide_element',
+        description: 'Clear/hide whatever is currently displayed on the hologram.',
+        parameters: { type: 'object', properties: {} }
+      },
+      {
+        name: 'spin',
+        description: 'Spin the hologram cube. Use for excitement, celebration, showing off, or when asked.',
+        parameters: { type: 'object', properties: {} }
+      }
+    ];
+
+    // Populate readonly textareas
+    document.getElementById('voice-sys-prompt').value = VOICE_SYSTEM_PROMPT;
+    document.getElementById('voice-tools-json').value = JSON.stringify(VOICE_TOOLS, null, 2);
+
+    // ── B. State Machine Bridge ──
+    let voiceActive = false;
+    let contentHideTimer = null;
+
+    function setA2uiVoiceState(state) {
+      a2uiState = state;
+      updateA2uiButtons();
+    }
+
+    // ── C & D. Split Audio Pipeline ──
+    // Two separate AudioContexts to avoid Windows "communications mode":
+    //   micCtx  — sinkId:'none' (no output device) so OS doesn't classify as call
+    //   playCtx — normal playback context, never has mic input
+    let micCtx = null, playCtx = null;
+    let micStream = null, micProcessor = null, micMuted = false;
+    let nextPlayTime = 0, playbackSources = [];
+    let micUnmuteTimer = null;
+
+    function setMicMuted(muted) {
+      micMuted = muted;
+      if (micUnmuteTimer) { clearTimeout(micUnmuteTimer); micUnmuteTimer = null; }
+      if (micStream) {
+        if (muted) {
+          micStream.getAudioTracks().forEach(t => { t.enabled = false; });
+        } else {
+          micUnmuteTimer = setTimeout(() => {
+            if (micStream && !micMuted) {
+              micStream.getAudioTracks().forEach(t => { t.enabled = true; });
+            }
+            micUnmuteTimer = null;
+          }, 400);
+        }
+      }
+    }
+
+    async function startAudioPipeline(onMicChunk) {
+      // 1. Create playback context FIRST — establishes media (not comms) audio session
+      playCtx = new AudioContext({ latencyHint: 'playback' });
+      const silBuf = playCtx.createBuffer(1, 1, playCtx.sampleRate);
+      const silSrc = playCtx.createBufferSource();
+      silSrc.buffer = silBuf;
+      silSrc.connect(playCtx.destination);
+      silSrc.start();
+
+      // 2. Create mic context with NO output device — invisible to OS audio routing
+      try {
+        micCtx = new AudioContext({ sinkId: { type: 'none' } });
+      } catch (e) {
+        // Fallback for browsers without sinkId support
+        micCtx = new AudioContext();
+      }
+
+      // 3. Request mic AFTER both contexts exist
+      // Disable all processing to prevent OS-level "communications mode" detection
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: { exact: false },
+          noiseSuppression: { exact: false },
+          autoGainControl: { exact: false },
+          googEchoCancellation: false,
+          googAutoGainControl: false,
+          googNoiseSuppression: false,
+          googHighpassFilter: false,
+          googTypingNoiseDetection: false
+        }
+      });
+
+      // 4. Mic processing in micCtx (no speaker output)
+      const source = micCtx.createMediaStreamSource(micStream);
+      const nativeSR = micCtx.sampleRate;
+      const targetSR = 16000;
+      micProcessor = micCtx.createScriptProcessor(4096, 1, 1);
+      micProcessor.onaudioprocess = (e) => {
+        if (micMuted) return;
+        const input = e.inputBuffer.getChannelData(0);
+        const ratio = nativeSR / targetSR;
+        const outLen = Math.floor(input.length / ratio);
+        const int16 = new Int16Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+          const s = Math.max(-1, Math.min(1, input[Math.floor(i * ratio)]));
+          int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        const bytes = new Uint8Array(int16.buffer);
+        for (let off = 0; off < bytes.length; off += 1024) {
+          const slice = bytes.slice(off, off + 1024);
+          let bin = '';
+          for (let i = 0; i < slice.length; i++) bin += String.fromCharCode(slice[i]);
+          onMicChunk(btoa(bin));
+        }
+      };
+      source.connect(micProcessor);
+      // ScriptProcessor needs to be connected to destination to fire, but micCtx has no real output
+      if (micCtx.sinkId !== undefined) {
+        // sinkId:'none' — safe to connect, no audio will be emitted
+        micProcessor.connect(micCtx.destination);
+      } else {
+        // Fallback: connect through silent gain
+        const muteGain = micCtx.createGain();
+        muteGain.gain.value = 0;
+        micProcessor.connect(muteGain);
+        muteGain.connect(micCtx.destination);
+      }
+
+      nextPlayTime = 0;
+    }
+
+    function stopAudioPipeline() {
+      if (micProcessor) { micProcessor.disconnect(); micProcessor = null; }
+      if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+      playbackSources.forEach(s => { try { s.stop(); } catch(e) {} });
+      playbackSources = [];
+      nextPlayTime = 0;
+      if (micCtx) { micCtx.close(); micCtx = null; }
+      if (playCtx) { playCtx.close(); playCtx = null; }
+      if (micUnmuteTimer) { clearTimeout(micUnmuteTimer); micUnmuteTimer = null; }
+    }
+
+    function initPlayback() { nextPlayTime = 0; }
+
+    function queueAudioChunk(base64) {
+      if (!playCtx) return;
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const int16 = new Int16Array(bytes.buffer);
+      const float32 = new Float32Array(int16.length);
+      for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 0x8000;
+
+      const buffer = playCtx.createBuffer(1, float32.length, 24000);
+      buffer.getChannelData(0).set(float32);
+      const src = playCtx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(playCtx.destination);
+
+      const now = playCtx.currentTime;
+      const startAt = Math.max(now + 0.02, nextPlayTime);
+      src.start(startAt);
+      nextPlayTime = startAt + buffer.duration;
+      playbackSources.push(src);
+      src.onended = () => {
+        const idx = playbackSources.indexOf(src);
+        if (idx >= 0) playbackSources.splice(idx, 1);
+      };
+    }
+
+    function stopPlayback() {
+      playbackSources.forEach(s => { try { s.stop(); } catch(e) {} });
+      playbackSources = [];
+      nextPlayTime = 0;
+    }
+
+    function stopMicCapture() { /* handled by stopAudioPipeline */ }
+    let playbackPlaying = false;
+
+    // ── E. WebSocket Client ──
+    let geminiWs = null;
+
+    function setVoiceStatus(text, color) {
+      const el = document.getElementById('voice-status');
+      el.textContent = text;
+      el.style.color = color || '#666';
+    }
+
+    function connectGemini() {
+      const apiKey = document.getElementById('voice-api-key').value.trim();
+      if (!apiKey) { setVoiceStatus('No API key', '#f88'); return; }
+
+      setVoiceStatus('Connecting...', '#ff0');
+      const url = `${GEMINI_WS_URL}?key=${apiKey}`;
+      geminiWs = new WebSocket(url);
+
+      geminiWs.onopen = () => {
+        setVoiceStatus('Connected, sending setup...', '#ff0');
+        // Send setup message
+        const setup = {
+          setup: {
+            model: GEMINI_MODEL,
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } }
+              }
+            },
+            systemInstruction: {
+              parts: [{ text: VOICE_SYSTEM_PROMPT }]
+            },
+            tools: [{ functionDeclarations: VOICE_TOOLS }],
+            inputAudioTranscription: {},
+            outputAudioTranscription: {}
+          }
+        };
+        geminiWs.send(JSON.stringify(setup));
+      };
+
+      geminiWs.onmessage = async (event) => {
+        let text;
+        if (event.data instanceof Blob) {
+          text = await event.data.text();
+        } else {
+          text = event.data;
+        }
+        const msg = JSON.parse(text);
+        handleGeminiMessage(msg);
+      };
+
+      geminiWs.onerror = (err) => {
+        console.error('Gemini WS error:', err);
+        setVoiceStatus('Connection error', '#f88');
+        cleanupVoice('ERROR');
+      };
+
+      geminiWs.onclose = (e) => {
+        setVoiceStatus(`Disconnected (${e.code})`, '#888');
+        // Normal close (1000) or user-initiated = SLEEP, otherwise ERROR
+        if (e.code === 1000 || e.code === 1005) {
+          cleanupVoice('SLEEP');
+        } else {
+          cleanupVoice('ERROR');
+        }
+      };
+    }
+
+    function disconnectGemini() {
+      if (geminiWs) {
+        geminiWs.close();
+        geminiWs = null;
+      }
+      cleanupVoice('SLEEP');
+    }
+
+    function cleanupVoice(endState) {
+      voiceActive = false;
+      stopAudioPipeline();
+      setA2uiVoiceState(endState || 'SLEEP');
+      document.getElementById('voice-start').disabled = false;
+      document.getElementById('voice-stop').disabled = true;
+      if (contentHideTimer) { clearTimeout(contentHideTimer); contentHideTimer = null; }
+    }
+
+    // ── F. Message Handler ──
+    let setupDone = false;
+    // ── Caption system ──
+    // Works like subtitles: buffer accumulates all spoken text, readHead advances
+    // at 12 chars/sec. Display shows the tail of revealed text that fits on screen.
+    let captionBuffer = '';     // all transcription text for current turn
+    let captionReadHead = 0;   // float — how many chars revealed so far
+    let captionOpacity = 0;    // fade in/out
+    let captionFading = false; // true when fading out after turn ends
+    let captionDone = false;   // true when turn ended and all text revealed
+    let captionLastTime = 0;   // for delta time
+    let transcriptClearTimer = null;
+
+    function tickCaption() {
+      const now = performance.now();
+      const dt = captionLastTime ? Math.min((now - captionLastTime) / 1000, 0.1) : 0.016;
+      captionLastTime = now;
+
+      if (captionFading) {
+        captionOpacity = Math.max(0, captionOpacity - 0.04);
+        if (captionOpacity <= 0) {
+          captionFading = false;
+          captionBuffer = '';
+          captionReadHead = 0;
+          captionDone = false;
+          if (!a2uiShowContent) { a2uiRandomText = ''; a2uiCharCount = 0; }
+        }
+        return;
+      }
+
+      if (captionBuffer.length > 0) {
+        captionOpacity = Math.min(1, captionOpacity + 0.08);
+        // Advance read head at ~12 chars/sec
+        if (captionReadHead < captionBuffer.length) {
+          captionReadHead = Math.min(captionBuffer.length, captionReadHead + a2uiCaptionSpeed * dt);
+        }
+        // If turn is done and we've revealed everything, start fade out
+        if (captionDone && captionReadHead >= captionBuffer.length) {
+          if (!transcriptClearTimer) {
+            transcriptClearTimer = setTimeout(() => {
+              captionFading = true;
+              transcriptClearTimer = null;
+            }, 1500);
+          }
+        }
+      }
+    }
+
+    // Get the visible portion of caption text (tail of revealed text)
+    function getCaptionVisible() {
+      const revealed = captionBuffer.slice(0, Math.floor(captionReadHead));
+      return revealed;
+    }
+
+    function startCaptionFadeOut() {
+      captionDone = true;
+    }
+
+    function handleGeminiMessage(msg) {
+      // Debug: log non-audio messages
+      const hasAudio = (msg.serverContent?.modelTurn?.parts || msg.server_content?.model_turn?.parts || [])
+        .some(p => (p.inlineData || p.inline_data));
+      if (!hasAudio) console.log('Gemini:', JSON.stringify(msg).slice(0, 500));
+
+      // Setup complete
+      if (msg.setupComplete || msg.setup_complete) {
+        setupDone = true;
+        voiceActive = true;
+        setVoiceStatus('Ready — Listening', '#5b5');
+        setA2uiVoiceState('IDLE');
+
+        // Greet on start — mute mic until greeting response arrives
+        const doGreet = document.getElementById('voice-greet').checked;
+
+        // Start unified audio pipeline (playback context created first to avoid comms mode)
+        startAudioPipeline((base64Chunk) => {
+          if (geminiWs && geminiWs.readyState === WebSocket.OPEN) {
+            geminiWs.send(JSON.stringify({
+              realtimeInput: {
+                mediaChunks: [{ mimeType: 'audio/pcm;rate=16000', data: base64Chunk }]
+              }
+            }));
+          }
+        }).then(() => {
+          if (doGreet) setMicMuted(true);
+        });
+
+        if (doGreet) {
+          setTimeout(() => {
+            if (geminiWs && geminiWs.readyState === WebSocket.OPEN) {
+              setA2uiVoiceState('THINKING');
+              geminiWs.send(JSON.stringify({
+                clientContent: {
+                  turns: [{ role: 'user', parts: [{ text: 'Hello! Please introduce yourself briefly.' }] }],
+                  turnComplete: true
+                }
+              }));
+            }
+          }, 300);
+        }
+        return;
+      }
+
+      // Server content
+      const sc = msg.serverContent || msg.server_content;
+      if (sc) {
+
+        // Audio data
+        const mt = sc.modelTurn || sc.model_turn;
+        if (mt && mt.parts) {
+          for (const part of mt.parts) {
+            const id = part.inlineData || part.inline_data;
+            if (id && (id.mimeType || id.mime_type || '').startsWith('audio/')) {
+              if (a2uiState !== 'SPEAKING') {
+                // Only reset caption if nothing has been buffered yet —
+                // transcription chunks can arrive before/between audio chunks
+                if (captionDone || captionFading) {
+                  captionBuffer = ''; captionReadHead = 0;
+                  captionOpacity = 0; captionFading = false; captionDone = false;
+                }
+                if (transcriptClearTimer) { clearTimeout(transcriptClearTimer); transcriptClearTimer = null; }
+                setMicMuted(true);
+                setA2uiVoiceState('SPEAKING');
+              }
+              setVoiceStatus('Speaking...', '#F5A623');
+              queueAudioChunk(id.data);
+            }
+          }
+        }
+
+        // Turn complete — wait for playback to finish before going IDLE
+        if (sc.turnComplete || sc.turn_complete || sc.generationComplete || sc.generation_complete) {
+          function finishTurn() {
+            // If audio is still playing, wait for it
+            if (playbackSources.length > 0) {
+              setTimeout(finishTurn, 200);
+              return;
+            }
+            setMicMuted(false);
+            startCaptionFadeOut(); // marks captionDone — will fade after readHead catches up
+            setA2uiVoiceState('IDLE');
+            setVoiceStatus('Ready — Listening', '#5b5');
+          }
+          finishTurn();
+        }
+
+        // Interrupted
+        if (sc.interrupted) {
+          setMicMuted(false);
+          stopPlayback();
+          initPlayback();
+          captionBuffer = ''; captionReadHead = 0; captionOpacity = 0; captionFading = false; captionDone = false;
+          if (transcriptClearTimer) { clearTimeout(transcriptClearTimer); transcriptClearTimer = null; }
+          if (!a2uiShowContent) { a2uiRandomText = ''; a2uiCharCount = 0; }
+          setA2uiVoiceState('IDLE');
+          setVoiceStatus('Ready — Listening', '#5b5');
+        }
+
+        // Input transcription (user speaking) — fade out old caption
+        const it = sc.inputTranscription || sc.input_transcription;
+        if (it) {
+          if (transcriptClearTimer) { clearTimeout(transcriptClearTimer); transcriptClearTimer = null; }
+          captionFading = true; // immediately start fading when user speaks
+          if (a2uiState === 'IDLE' || a2uiState === 'SLEEP') {
+            setA2uiVoiceState('LISTENING');
+            setVoiceStatus('Listening...', '#6BC0FF');
+          }
+        }
+
+        // Output transcription — smart append to caption buffer
+        const ot = sc.outputTranscription || sc.output_transcription;
+        if (ot) {
+          const text = (ot.text || '').replace(/[\r\n]+/g, ' ').trim();
+          if (text) {
+            if (transcriptClearTimer) { clearTimeout(transcriptClearTimer); transcriptClearTimer = null; }
+            captionFading = false;
+            captionDone = false;
+            const prevLen = captionBuffer.length;
+            const prevBuf = captionBuffer;
+            // Gemini sends transcription in two possible patterns:
+            // 1. Cumulative: "Hello" -> "Hello, welcome" -> "Hello, welcome to" (full text each time)
+            // 2. Incremental: "Hello" -> ", welcome" -> " to" (new text only)
+            let mergeType = '';
+            if (captionBuffer.length > 0 && text.length > captionBuffer.length && text.startsWith(captionBuffer)) {
+              captionBuffer = text;
+              mergeType = 'CUMULATIVE';
+            } else if (captionBuffer.length > 0 && captionBuffer.startsWith(text)) {
+              mergeType = 'SUBSET-IGNORED';
+            } else if (captionBuffer.length > 0) {
+              const lastChar = captionBuffer[captionBuffer.length - 1];
+              const needsSpace = lastChar !== ' ' && text[0] !== ' ';
+              captionBuffer += (needsSpace ? ' ' : '') + text;
+              mergeType = 'APPEND';
+            } else {
+              captionBuffer = text;
+              mergeType = 'FIRST';
+            }
+            // First chunk: show instantly (user already heard it).
+            // Subsequent: keep readHead within 8 chars of buffer end.
+            if (prevLen === 0) {
+              captionReadHead = captionBuffer.length;
+            } else {
+              // No jump — let readHead advance naturally at its own pace
+            }
+            logCaption('TXT-IN', `"${text}"`, '#F5A623');
+            logCaption(mergeType, `buf[${prevLen}→${captionBuffer.length}] head=${Math.floor(captionReadHead)} show="${captionBuffer.slice(0, Math.min(60, captionBuffer.length))}"`, '#888');
+          }
+        }
+      }
+
+      // Tool call
+      const tc = msg.toolCall || msg.tool_call;
+      if (tc) {
+        setA2uiVoiceState('THINKING');
+        setVoiceStatus('Processing tool call...', '#8B5CF6');
+        const results = [];
+        for (const fc of (tc.functionCalls || tc.function_calls)) {
+          logToolCall(fc.name, fc.args);
+          const result = handleToolCall(fc.name, fc.args);
+          logToolResult(fc.name, result);
+          results.push({ id: fc.id, name: fc.name, response: { output: result } });
+        }
+        // Send tool response
+        if (geminiWs && geminiWs.readyState === WebSocket.OPEN) {
+          geminiWs.send(JSON.stringify({
+            toolResponse: {
+              functionResponses: results
+            }
+          }));
+        }
+      }
+
+      // Tool call cancellation
+      if (msg.toolCallCancellation || msg.tool_call_cancellation) {
+        if (contentHideTimer) { clearTimeout(contentHideTimer); contentHideTimer = null; }
+      }
+
+      // Activity signals for state transitions
+      const ri = msg.realtimeInput || msg.realtime_input;
+      if (ri) {
+        if (ri.activityStart || ri.activity_start) {
+          setA2uiVoiceState('LISTENING');
+          setVoiceStatus('Listening...', '#6BC0FF');
+        }
+        if (ri.activityEnd || ri.activity_end) {
+          setA2uiVoiceState('THINKING');
+          setVoiceStatus('Thinking...', '#8B5CF6');
+        }
+      }
+    }
+
+    // ── G. Tool Handlers ──
+    function handleToolCall(name, args) {
+      // Auto-hide timer for elements with duration
+      if (contentHideTimer) { clearTimeout(contentHideTimer); contentHideTimer = null; }
+
+      switch (name) {
+        case 'show_product': {
+          setActiveElement('product', { product: args.product || 'cargomessenger', highlights: args.highlights });
+          return { success: true, message: `Showing product: ${args.product}` };
+        }
+        case 'show_stats': {
+          setActiveElement('stats', { title: args.title, stats: args.stats || [] });
+          return { success: true, message: `Showing ${(args.stats || []).length} stats` };
+        }
+        case 'show_client_logos': {
+          setActiveElement('clients', { title: args.title, clients: args.clients });
+          return { success: true, message: 'Showing client logos' };
+        }
+        case 'show_comparison': {
+          setActiveElement('comparison', { left_title: args.left_title, right_title: args.right_title, items: args.items || [] });
+          return { success: true, message: 'Showing comparison' };
+        }
+        case 'show_workflow': {
+          setActiveElement('workflow', { title: args.title, steps: args.steps || [] });
+          return { success: true, message: `Showing workflow with ${(args.steps || []).length} steps` };
+        }
+        case 'show_hero_text': {
+          setActiveElement('hero', { text: args.text || '', subtitle: args.subtitle, style: args.style });
+          return { success: true, message: 'Showing hero text' };
+        }
+        case 'show_chart': {
+          setActiveElement('chart', { chart_type: args.chart_type || 'bar', title: args.title, data: args.data || [] });
+          return { success: true, message: `Showing ${args.chart_type} chart` };
+        }
+        case 'show_list': {
+          setActiveElement('list', { title: args.title, items: args.items || [], style: args.style });
+          const duration = args.duration_seconds;
+          if (duration && duration > 0) {
+            contentHideTimer = setTimeout(() => { clearActiveElement(); contentHideTimer = null; }, duration * 1000);
+          }
+          return { success: true, message: `Showing list with ${(args.items || []).length} items` };
+        }
+        case 'hide_element':
+        case 'hide_content': {
+          clearActiveElement();
+          return { success: true, message: 'Element hidden' };
+        }
+        case 'display_content': {
+          // Legacy fallback — convert to show_list
+          const content = args.content || '';
+          const items = content.split('\n').filter(l => l.trim());
+          setActiveElement('list', { title: '', items, style: 'bullets' });
+          const duration = args.duration_seconds;
+          if (duration && duration > 0) {
+            contentHideTimer = setTimeout(() => { clearActiveElement(); contentHideTimer = null; }, duration * 1000);
+          }
+          return { success: true, message: `Displaying content as list` };
+        }
+        case 'spin': {
+          triggerSpin();
+          return { success: true, message: 'Spinning' };
+        }
+        default:
+          return { error: `Unknown tool: ${name}` };
+      }
+    }
+
+    // ── H. Tool Log ──
+    const toolLogEl = document.getElementById('a2ui-tool-log');
+    const MAX_LOG_ENTRIES = 50;
+
+    function logTimestamp() {
+      return new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function logToolCall(name, args) {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `<span class="log-ts">${logTimestamp()}</span> <span class="log-tool">${name}</span>(<span class="log-args">${JSON.stringify(args).slice(0, 80)}</span>)`;
+      toolLogEl.appendChild(entry);
+      trimLog();
+      toolLogEl.scrollTop = toolLogEl.scrollHeight;
+    }
+
+    function logToolResult(name, result) {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `<span class="log-ts">${logTimestamp()}</span> <span class="log-result">→ ${JSON.stringify(result).slice(0, 100)}</span>`;
+      toolLogEl.appendChild(entry);
+      trimLog();
+      toolLogEl.scrollTop = toolLogEl.scrollHeight;
+    }
+
+    function logCaption(label, text, color) {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `<span class="log-ts">${logTimestamp()}</span> <span style="color:${color || '#ccc'}">[${label}]</span> <span style="color:#ddd">${text.replace(/</g,'&lt;').slice(0, 120)}</span>`;
+      toolLogEl.appendChild(entry);
+      trimLog();
+      toolLogEl.scrollTop = toolLogEl.scrollHeight;
+    }
+
+    function trimLog() {
+      while (toolLogEl.children.length > MAX_LOG_ENTRIES) toolLogEl.removeChild(toolLogEl.firstChild);
+    }
+
+    // ── I. Button Handlers & UI Wiring ──
+    document.getElementById('voice-start').addEventListener('click', () => {
+      document.getElementById('voice-start').disabled = true;
+      document.getElementById('voice-stop').disabled = false;
+      setupDone = false;
+      connectGemini();
+    });
+
+    document.getElementById('voice-stop').addEventListener('click', () => {
+      disconnectGemini();
+    });
+
+    // When voice is active, make left panel buttons read-only visual indicators
+    const origA2uiButtonClick = (key) => {
+      if (voiceActive) return; // block manual state changes during voice
+      if (key === 'CONTENT') {
+        if (activeElement) { clearActiveElement(); } else {
+          setActiveElement('hero', { text: 'CargoMatrix', subtitle: 'Smart Software Solutions', style: 'glow' });
+        }
+      } else {
+        a2uiState = key;
+        clearActiveElement();
+      }
+      updateA2uiButtons();
+    };
+    // Re-bind left panel buttons to respect voiceActive
+    for (const key of flowOrder) {
+      const b = a2uiFlowBtns[key];
+      // Remove old listeners by cloning
+      const newB = b.cloneNode(true);
+      b.parentNode.replaceChild(newB, b);
+      a2uiFlowBtns[key] = newB;
+      newB.addEventListener('click', () => origA2uiButtonClick(key));
+    }
+    // Rebuild SVG after replacing buttons
+    requestAnimationFrame(() => { if (activeMode === 'a2ui') buildFlowSVG(); });
+
+  </script>
+</body>
+</html>
